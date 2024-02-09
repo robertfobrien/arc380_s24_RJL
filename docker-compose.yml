@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  arc380-ros:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arc380-ros:v1.0.0
+    container_name: arc380-ros
+    environment:
+      - ROS_HOSTNAME=arc380-ros
+      - ROS_MASTER_URI=http://ros-core:11311
+    volumes:
+      - ./ros_packages:/root/catkin_ws/src
+    depends_on:
+      - ros-core
+      - novnc
+    tty: true
+    stdin_open: true
+
+  ros-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arc380-ros:v1.0.0
+    container_name: ros-core
+    ports:
+      - "11311:11311" # ROS Master
+    command:
+      - roscore
+
+
+  # ros-bridge:
+  #   image: gramaziokohler/ros-noetic-moveit
+  #   container_name: ros-bridge
+  #   environment:
+  #     - "ROS_HOSTNAME=ros-bridge"
+  #     - "ROS_MASTER_URI=http://ros-core:11311"
+  #   ports:
+  #     - "9090:9090"
+  #   depends_on:
+  #     - ros-core
+  #   command:
+  #     - roslaunch
+  #     - --wait
+  #     - rosbridge_server
+  #     - rosbridge_websocket.launch
+
+
+  novnc:
+    image: theasp/novnc:latest
+    container_name: novnc
+    environment:
+      - DISPLAY_WIDTH=1920
+      - DISPLAY_HEIGHT=1080
+      - RUN_XTERM=no
+    ports:
+      - "8080:8080" # noVNC Web interface
