@@ -18,6 +18,43 @@ services:
     tty: true
     stdin_open: true
 
+  ros-gazebo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arc380-ros:v1.1.0
+    container_name: ros-gazebo
+    environment:
+      - ROS_HOSTNAME=ros-gazebo
+      - ROS_MASTER_URI=http://ros-core:11311
+    depends_on:
+      - ros-core
+      - novnc
+    command:
+      - roslaunch
+      - --wait
+      - abb_irb120_gazebo
+      - irb120_3_60_gazebo.launch
+
+  ros-moveit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arc380-ros:v1.1.0
+    container_name: ros-moveit
+    environment:
+      - ROS_HOSTNAME=ros-moveit
+      - ROS_MASTER_URI=http://ros-core:11311
+    depends_on:
+      - ros-core
+      - ros-gazebo
+      - novnc
+    command:
+      - roslaunch
+      - --wait
+      - abb_irb120_moveit_config
+      - moveit_planning_execution.launch
+
   ros-core:
     build:
       context: .
