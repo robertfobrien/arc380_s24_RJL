@@ -53,8 +53,8 @@ services:
     image: theasp/novnc:latest
     container_name: novnc
     environment:
-      - DISPLAY_WIDTH=1920
-      - DISPLAY_HEIGHT=1080
+      - DISPLAY_WIDTH=1280
+      - DISPLAY_HEIGHT=720
       - RUN_XTERM=no
     ports:
       - "8080:8080" # noVNC Web interface
