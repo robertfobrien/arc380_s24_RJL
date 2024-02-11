@@ -32,6 +32,8 @@ RUN apt-get install -y python3-pip
 RUN pip3 install \
     roslibpy \
     rospkg
+# git
+RUN apt-get install -y git
 # Cleanup
 RUN rm -rf /var/lib/apt/lists/*
 
@@ -39,14 +41,15 @@ RUN rm -rf /var/lib/apt/lists/*
 ENV DISPLAY=novnc:0.0
 
 # Set up workspace
-ENV CATKIN_WS=/root/catkin_ws
-RUN mkdir -p $CATKIN_WS/src
-WORKDIR $CATKIN_WS
+ENV ARC380_S24=/root/arc380_s24
+WORKDIR /root
+RUN git clone -b noetic_dev https://github.com/ADRLaboratory/arc380_s24.git
+WORKDIR $ARC380_S24
 RUN /bin/bash -c '. /opt/ros/noetic/setup.bash; catkin_make'
 
 # Source workspace
 RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
-RUN echo "source $CATKIN_WS/devel/setup.bash" >> ~/.bashrc
+RUN echo "source $ARC380_S24/devel/setup.bash" >> ~/.bashrc
 
 # Expose ports
 # 9090: rosbridge
