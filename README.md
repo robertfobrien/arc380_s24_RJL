@@ -1,2 +1,14 @@
-# arc380_s24
-Princeton University ARC380-CEE380 Introduction to Robotics for Digital Fabrication Spring 2024
+# ARC380-CEE380 Spring 2024
+## Introduction to Robotics for Digital Fabrication
+
+ARC 380 – Introduction to Robotics for Digital Fabrication introduces students to industrial robotic arms and their application for digital fabrication and construction automation. This course utilizes Robot Operating System (ROS) and Python to plan, visualize, simulate, and control industrial robotic arms. ROS and Python are both widely used in robotics research and development. Prerequisite knowledge of ROS and Python is not required. By the end of this course, students will be able to utilize this platform to develop robotic processes for digital fabrication and will be familiar with state-of-the-art research on robotic fabrication and construction automation.
+
+The course comprises four main sections: robotics and Python fundamentals; ROS programming, simulation, and motion planning; introduction to perception and computer vision; and closed-loop adaptive digital fabrication. The first section of the course provides an overview of robotics fundamentals, including an introduction to industrial robotic arms, robot system components, workspace, and robot control. This section also covers essential mathematics for robotics such as vector operations, transformation matrices, and rigid body dynamics. Moreover, this section covers Python programming fundamentals such as syntax, variables and references, functions, arguments, conditional statements, iteration, built-in data types, and object-oriented programming.
+
+Building upon this foundation, the second section of the course introduces ROS, its fundamentals and ecosystem; the Universal Robot Description Format (URDF); and the ROS packages Gazebo and MoveIt for simulating and planning digital fabrication processes. This section also covers forward and inverse kinematics, trajectory generation, and motion planning employing pathfinding algorithms such as A*. In this section, students will also learn to work with the Python library COMPAS_FAB to design, plan, and execute digital fabrication processes.
+
+The third section of the course introduces perception for digital fabrication, integrating sensors and computer vision into the robotic processes. This section is supplemented with common operations and algorithms for perception including convolution, point cloud registration, and the associated optimization techniques. The fourth and last section introduces students to custom tool design and closed-loop control for digital fabrication. It also discusses state-of-the-art research on construction robotics and digital fabrication and provides an outlook for future research.
+
+The state-of-the-art robotic fabrication facilities at Princeton University’s Embodied Computation Lab (ECL) provide the necessary infrastructure for this course, providing a unique opportunity for students to acquire hands-on experience. Students will work with ABB IRB120 industrial robotic arms throughout the semester.
+
+This course is structured around the following main activities: lectures by the instructor, selected readings, programming and robotics workshops, weekly assignments, a final project, and a final paper.
