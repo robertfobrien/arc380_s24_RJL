@@ -2,9 +2,6 @@ version: '3.8'
 
 services:
   arc380-ros:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     image: adrlaboratory/arc380-ros:v1.1.0
     container_name: arc380-ros
     environment:
@@ -19,20 +16,14 @@ services:
     stdin_open: true
 
   ros-core:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     image: adrlaboratory/arc380-ros:v1.1.0
     container_name: ros-core
     ports:
-      - "11311:11311" # ROS Master
+      - "11311:11311" # ROS Core
     command:
       - roscore
 
   ros-bridge:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     image: adrlaboratory/arc380-ros:v1.1.0
     container_name: ros-bridge
     environment:

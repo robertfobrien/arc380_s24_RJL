@@ -54,7 +54,7 @@ RUN echo "source $ARC380_S24/devel/setup.bash" >> ~/.bashrc
 # Expose ports
 # 9090: rosbridge
 EXPOSE 9090
-# 11311: ROS Master
+# 11311: ROS Core
 EXPOSE 11311
 # 11345: Gazebo
 EXPOSE 11345

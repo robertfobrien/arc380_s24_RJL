@@ -8,7 +8,7 @@
 
   <!-- startup simulated world -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" value="worlds/empty.world"/>
+    <arg name="world_name" value="$(find arc380_assignment3)/worlds/assignment3_world.world"/>
     <arg name="gui" value="true"/>
     <arg name="paused" value="$(arg paused)"/>
   </include>
@@ -17,7 +17,7 @@
   <include file="$(find abb_irb120_gazebo)/launch/load_irb120_3_60.launch" />
 
   <!-- push robot_description to factory and spawn robot in gazebo -->
-  <node name="abb_irb120_spawn" pkg="gazebo_ros" type="spawn_model" output="screen" args="-urdf -param robot_description -model abb_irb120_3_60" />
+  <node name="abb_irb120_spawn" pkg="gazebo_ros" type="spawn_model" output="screen" args="-urdf -param robot_description -model abb_irb120_3_60 -x 2 -y 1 -z 1.0 -R 0 -P 0 -Y 0.785398" />
 
     <!-- convert joint states to TF transforms for rviz, etc -->
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
@@ -25,6 +25,6 @@
   </node>
 
   <!-- init and start Gazebo ros_control interface -->
-  <include file="$(find abb_irb120_gazebo)/launch/irb120_3_60_control.launch"/>
+  <include file="$(find abb_irb120_gazebo)/launch/irb120_control.launch"/>
 
 </launch>

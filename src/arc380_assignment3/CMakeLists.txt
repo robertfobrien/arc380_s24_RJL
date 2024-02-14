@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(abb_irb120_gazebo)
+project(arc380_assignment3)
 
 find_package(catkin REQUIRED)
 
 catkin_package()
 
-foreach(dir config launch urdf)
+foreach(dir launch worlds)
    install(DIRECTORY ${dir}/
       DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/${dir})
 endforeach()
