@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   arc380-ros:
-    image: adrlaboratory/arc380-ros:v1.2.0
+    image: adrlaboratory/arc380-ros:v1.2.1
     container_name: arc380-ros
     environment:
       - ROS_HOSTNAME=arc380-ros
@@ -16,7 +16,7 @@ services:
     stdin_open: true
 
   ros-core:
-    image: adrlaboratory/arc380-ros:v1.2.0
+    image: adrlaboratory/arc380-ros:v1.2.1
     container_name: ros-core
     ports:
       - "11311:11311" # ROS Core
@@ -24,7 +24,7 @@ services:
       - roscore
 
   ros-bridge:
-    image: adrlaboratory/arc380-ros:v1.2.0
+    image: adrlaboratory/arc380-ros:v1.2.1
     container_name: ros-bridge
     environment:
       - "ROS_HOSTNAME=ros-bridge"
