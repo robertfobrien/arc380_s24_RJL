@@ -25,6 +25,6 @@
   </node>
 
   <!-- init and start Gazebo ros_control interface -->
-  <include file="$(find abb_irb120_gazebo)/launch/irb120_3_60_control.launch"/>
+  <include file="$(find abb_irb120_gazebo)/launch/irb120_control.launch"/>
 
 </launch>

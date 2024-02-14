@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>arc380_assignment3</name>
+  <version>0.0.1</version>
+  <description> ARC 380 / CEE 380 Assignment 3 Package </description>
+  <author>Daniel Ruan (Princeton University)</author>
+  <maintainer email="daniel.ruan@princeton.edu">Daniel Ruan (Princeton University)</maintainer>
+  <license>Apache2</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>abb_irb120_gazebo</exec_depend>
+  <exec_depend>abb_irb120_support</exec_depend>
+  <exec_depend>abb_irb120_moveit_config</exec_depend>
+  <exec_depend>gazebo</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>gazebo_ros_control</exec_depend>
+  <exec_depend>gazebo_ros_pkgs</exec_depend>
+  <exec_depend>joint_state_controller</exec_depend>
+  <exec_depend>position_controllers</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros_controllers</exec_depend>
+
+  <export>
+    <architecture_independent/>
+  </export>
+</package>
