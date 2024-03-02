@@ -21,7 +21,7 @@ def create_frame_from_points(point1: cg.Point, point2: cg.Point, point3: cg.Poin
     # ================================== YOUR CODE HERE ==================================
 
     # Part 1.c.
-
+    frame = cg.Frame.from_points(point1, point2, point2)
     # ====================================================================================
     return frame
 
@@ -39,7 +39,9 @@ def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) ->
     ee_frame_w = None
     # ================================== YOUR CODE HERE ==================================
 
-    # Part 1.d.
+    world_frame = cg.Frame.worldXYZ()
+    T = cg.Transformation.from_frame_to_frame(task_frame, world_frame) 
+    ee_frame_w = ee_frame_t.transform(T)
 
     # ====================================================================================
     return ee_frame_w
