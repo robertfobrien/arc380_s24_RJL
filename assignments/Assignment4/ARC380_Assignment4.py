@@ -147,14 +147,13 @@ def varying_thickness(task_frame,x1,y1,x2,y2,dz):
             goto_task_point(above_frame ,xys[i][0],xys[i][1])"""
     return 1
 
-def move_pen_above_paper(task_frame):
-    """moves the pen to above the paper"""
-    dz = 100 # mm
+def lift_up_pen(task_frame,mm_above=100, x=0, y=0):
+    """resets the pen by moving the pen above the paper at x,y"""
 
     # frame just above the paper so its less thickness when it draws
     above_frame = task_frame
-    above_frame.point.z = above_frame.point.z + dz
-    goto_task_point(above_frame, 0,0)
+    above_frame.point.z = above_frame.point.z + mm_above
+    goto_task_point(above_frame, x,y)
 
 
 
@@ -234,9 +233,11 @@ def draw_random_shapes(n):
     """ draws an assortment of n random shapes """
     for i in range(n):
         shape_points = random_polygon_waypoints()
-        print("Drawing shape: , i")
+        print("Drawing shape: ", i)
         execute_tf_points(task_frame, shape_points)
-        move_pen_above_paper(task_frame)
+        x = shape_points[0][0]
+        y = shape_points[0][1]
+        lift_up_pen(task_frame, x, y)
     return 1
     
 
