@@ -134,37 +134,8 @@ def execute_tf_points(task_frame, points, abb_rrc):
     for p in points:
         goto_task_point(task_frame, p[0], p[1], abb_rrc)
 
-
-if __name__ == '__main__':
-    # Make sure markers are in correct order for aruco vs plane formation
-    """
-    aruco_1 = cg.Point(271.02,483.59, 30)
-    aruco_2 = cg.Point(257.31,335.69,28)
-    aruco_3 = cg.Point(69.25, 485.12, 30)
-    aruco_4 = cg.Point(87.88,339.13,30)
-    
-    task_frame = create_frame_from_points(aruco_1, aruco_2, aruco_3)
-
-    # Create Ros Client
-    ros = rrc.RosClient()
-    ros.run()
-
-    # Create ABB Client
-    abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
-    print('Connected.')
-
-    # End of Code
-    print('Finished')
-
-    # Close client
-    ros.close()
-    ros.terminate()
-    """
-
-    #code to test the image proccessing
-
+def get_shapes_info(img_path):
     # Load an image from a file
-    img_path = 'test_frame.jpeg'
     img = cv2.imread(img_path)
     # Convert the image from BGR to RGB and display using matplotlib
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -234,7 +205,7 @@ if __name__ == '__main__':
     img_data = np.float32(img_data)
 
     # Define the number of clusters
-    k = 11
+    k = 4
 
     # Define the criteria for the k-means algorithm
     # This is a tuple with three elements: (type of termination criteria, maximum number of iterations, epsilon/required accuracy)
@@ -257,29 +228,130 @@ if __name__ == '__main__':
     kmeans_img = kmeans_data.reshape(cropped_image.shape)
     labels = labels.reshape(cropped_image.shape[:2])
 
-    # Display the k-means image
-    #plt.imshow(cv2.cvtColor(kmeans_img, cv2.COLOR_BGR2RGB))
-    #plt.title(f'Image classification using k-means clustering (k = {k})')
-    #plt.gca().invert_yaxis()
-    #plt.show()
+    output_image = kmeans_img.copy()
+    k_means_copy = kmeans_img.copy()
 
-    # Identify the cluster that is closest to the dark green color
-    dark_red = np.array([40, 9, 3])
-    distances = np.linalg.norm(centers - dark_red, axis=1)
-    red_cluster_label = np.argmin(distances)
+    # shape dictionary we will use to store all the info about shapes
+    shape_dict = []
+    """
+    Color
+    Shape (i.e., circle or square)
+    Size
+    Position (in the world frame)
+    Orientation (if it is a square)
+    """
+    num_circles = 0
 
-    print(f'Label of the cluster closest to dark red: {red_cluster_label}')
+    # Loop through each cluster
+    for i in range(k):
+        # Create a mask for the current cluster
+        mask = (labels == i).astype(np.uint8) * 255
 
-    # Create a mask image for this label
-    # All pixels that belong to this cluster will be white, and all others will be black
-    mask_img = np.zeros(kmeans_img.shape[:2], dtype='uint8')
-    mask_img[labels == red_cluster_label] = 255
+        # find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for cnt in contours: # this will run for each shape 
+            object_info = {
+                "color": None,
+                "shape": None,
+                "size": None,  
+                "position": None,
+                "orientation": None 
+            }
+            # make sure we're above our threshold
+            if cv2.contourArea(cnt) > 340 and cv2.contourArea(cnt) <  140000:
+                #print("area, " + str(cv2.contourArea(cnt)))
 
+                # draws the outer contour
+                #cv2.drawContours(output_image, [cnt], -1, (0, 255, 0), 2)
+
+                # center
+                M = cv2.moments(cnt)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+
+                    area = cv2.contourArea(cnt)
+                    perimeter = cv2.arcLength(cnt, closed=True)
+
+                    #determining shape type
+                    roundness = (4 * np.pi * area) / perimeter**2
+                    #print("roundness, ", roundness)
+
+                    # determines if a shape is a circle or square, the only "good" ones
+                    is_a_good_shape = False 
+
+                    if roundness > 0.85: # testing for circle
+                        object_info['shape'] = "circle"
+                        num_circles = num_circles + 1
+                        is_a_good_shape = True
+                    elif np.abs(area - (perimeter/4)**2) < 150: # testing for square --> making sure (0.25*perim)^2 is close to the area of the object
+                        object_info['shape'] = "square"
+                        #print("area from perimeter: ", str((perimeter/4)**2))
+                        #print("actual area: ", area)
+                        is_a_good_shape = True
+
+                    
+                    
+                    #some attributes that we're adding about this particular shape
+                    object_info['color'] = k_means_copy[cy,cx] # gets the color from the center of the shape
+                    object_info['position'] = [cx,cy]
+                    object_info['size'] = area
+
+                    # TODO find orientation for a square
+                    # ----------------------------------
+
+                    #add this shape to the full array that tells us about all our shapes, but only if it's "good"
+                    if is_a_good_shape:
+                        shape_dict.append(object_info)
+                        # center of cluster
+                        cv2.circle(output_image, (cx, cy), 5, (0, 0, 255), -1)
+                        # put id on cluster
+                        cv2.putText(output_image, str(i), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+                        # uncomment this section for us to debug each shape that we're detecting, i.e. go one by one
+                        #cv2.imshow('Clusters with Centers (Excluding Small Clusters)', output_image)
+                        #cv2.waitKey(0)
+                        #cv2.destroyAllWindows()
+
+                    
+
+    # uncomment this section for us to debug each shape that we're detecting, i.e. go one by one
+    #print("number of circles detected:, ", num_circles)
+    cv2.imshow('Clusters with Centers (Excluding Small Clusters)', output_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    #print("shape dict")
+    #print(shape_dict)
+    return shape_dict
+
+if __name__ == '__main__':
+    # Make sure markers are in correct order for aruco vs plane formation
+    """ # commented out this part just to test the image processing. 
+    aruco_1 = cg.Point(271.02,483.59, 30)
+    aruco_2 = cg.Point(257.31,335.69,28)
+    aruco_3 = cg.Point(69.25, 485.12, 30)
+    aruco_4 = cg.Point(87.88,339.13,30)
     
+    task_frame = create_frame_from_points(aruco_1, aruco_2, aruco_3)
 
-    plt.imshow(mask_img, cmap='gray')
-    plt.title(f'Mask image for cluster {red_cluster_label} corresponding to dark red')
-    plt.gca().invert_yaxis()
-    plt.show()
+    # Create Ros Client
+    ros = rrc.RosClient()
+    ros.run()
 
+    # Create ABB Client
+    abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
+    print('Connected.')
+
+    # End of Code
+    print('Finished')
+
+    # Close client
+    ros.close()
+    ros.terminate()
+    """
+
+    #code to test the image proccessing
+    shapes = get_shapes_info('test_frame.jpeg')
+    print(shapes)
 
