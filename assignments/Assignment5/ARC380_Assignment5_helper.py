@@ -4,22 +4,33 @@ import pyrealsense2 as rs
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
-
 import compas.geometry as cg
 import compas_rrc as rrc
 from cv2 import aruco
+
 
 
 def capture_img(visualize: bool = False, save: bool = False, path: str = 'img.png') -> np.ndarray:
     # Create a pipeline
     pipeline = rs.pipeline()
 
+    devices = rs.context().devices
+    
+    # Find the T265
+    camera_name = None
+    devices = rs.context().devices
+
+
+    print("pipeline", pipeline)
+
     # Create a config and configure the pipeline to stream
     config = rs.config()
     config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
 
     # Start streaming
+    print("pipeline before start, stream is enabled")
     pipeline.start(config)
+    print("pipeline started")
 
     # Get the device and color sensor
     profile = pipeline.get_active_profile()
@@ -126,16 +137,13 @@ def execute_tf_points(task_frame, points, abb_rrc):
 
 if __name__ == '__main__':
     # Make sure markers are in correct order for aruco vs plane formation
+    """
     aruco_1 = cg.Point(271.02,483.59, 30)
     aruco_2 = cg.Point(257.31,335.69,28)
     aruco_3 = cg.Point(69.25, 485.12, 30)
     aruco_4 = cg.Point(87.88,339.13,30)
     
     task_frame = create_frame_from_points(aruco_1, aruco_2, aruco_3)
-    #task_frame = create_frame_from_points(aruco_1, aruco_2, aruco_3, aruco_4)
-    #print("task frame: ", task_frame)
-
-    #varying_thickness(task_frame,0,0,1,1,1.2)
 
     # Create Ros Client
     ros = rrc.RosClient()
@@ -151,3 +159,127 @@ if __name__ == '__main__':
     # Close client
     ros.close()
     ros.terminate()
+    """
+
+    #code to test the image proccessing
+
+    # Load an image from a file
+    img_path = 'test_frame.jpeg'
+    img = cv2.imread(img_path)
+    # Convert the image from BGR to RGB and display using matplotlib
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # Load the predefined dictionary where our markers are printed from
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+
+    # Load the default detector parameters
+    detector_params = aruco.DetectorParameters()
+
+    # Create an ArucoDetector using the dictionary and detector parameters
+    detector = aruco.ArucoDetector(dictionary, detector_params)
+    corners, ids, rejected = detector.detectMarkers(img)
+    markers_img = img_rgb.copy()
+    aruco.drawDetectedMarkers(markers_img, corners, ids)
+
+    # show the ardutags on the screen 
+    #plt.figure(figsize=(16,9))
+    #plt.imshow(markers_img)
+    #plt.title('Detected ArUco markers')
+    #plt.show()
+
+    # Define the dimensions of the output image
+    width = 10      # inches
+    height = 7.5    # inches
+    ppi = 45        # pixels per inch (standard resolution for most screens - can be any arbitrary value that still preserves information)
+
+    _ids = ids.flatten()
+    #print(_ids)
+    #print(np.argsort(_ids))
+
+    # Sort corners based on id
+    ids = ids.flatten()
+    #print(ids)
+
+    # Sort the corners based on the ids
+    corners = np.array([corners[i] for i in np.argsort(ids)])
+    #print(corners.shape)
+
+    # Remove dimensions of size 1
+    corners = np.squeeze(corners)
+    #print(corners)
+
+    # Sort the ids
+    ids = np.sort(ids)
+
+    # Extract source points corresponding to the exterior bounding box corners of the 4 markers
+    src_pts = np.array([corners[0][0], corners[1][1], corners[2][2], corners[3][3]], dtype='float32')
+    #print("src points")
+    #print(src_pts)
+
+    # Compute the axis-aligned bounding box of the points
+    x, y, w, h = cv2.boundingRect(src_pts)
+
+    # Crop the image using the computed bounding box
+    cropped_image = img.copy()[y:y+h, x:x+w]
+
+    # display the cropped image to the id tags
+    #plt.imshow(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
+    #plt.title('cropped image')
+    #plt.show()
+
+    # Run k-means clustering on the image
+
+    # Reshape our image data to a flattened list of RGB values
+    img_data = cropped_image.reshape((-1, 3))
+    img_data = np.float32(img_data)
+
+    # Define the number of clusters
+    k = 11
+
+    # Define the criteria for the k-means algorithm
+    # This is a tuple with three elements: (type of termination criteria, maximum number of iterations, epsilon/required accuracy)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+
+    # Run the k-means algorithm
+    # Parameters: data, number of clusters, best labels, criteria, number of attempts, initial centers
+    _, labels, centers = cv2.kmeans(img_data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+
+    #print(f'Labels shape: {labels.shape}')
+    #print(f'Centers shape: {centers.shape}')
+    #print(f'Centers: \n{centers}')
+
+    # The output of the k-means algorithm gives the centers as floating point values
+    # We need to convert these back to uint8 to be able to use them as pixel values
+    centers = np.uint8(centers)
+
+    # Rebuild the image using the labels and centers
+    kmeans_data = centers[labels.flatten()]
+    kmeans_img = kmeans_data.reshape(cropped_image.shape)
+    labels = labels.reshape(cropped_image.shape[:2])
+
+    # Display the k-means image
+    #plt.imshow(cv2.cvtColor(kmeans_img, cv2.COLOR_BGR2RGB))
+    #plt.title(f'Image classification using k-means clustering (k = {k})')
+    #plt.gca().invert_yaxis()
+    #plt.show()
+
+    # Identify the cluster that is closest to the dark green color
+    dark_red = np.array([40, 9, 3])
+    distances = np.linalg.norm(centers - dark_red, axis=1)
+    red_cluster_label = np.argmin(distances)
+
+    print(f'Label of the cluster closest to dark red: {red_cluster_label}')
+
+    # Create a mask image for this label
+    # All pixels that belong to this cluster will be white, and all others will be black
+    mask_img = np.zeros(kmeans_img.shape[:2], dtype='uint8')
+    mask_img[labels == red_cluster_label] = 255
+
+    
+
+    plt.imshow(mask_img, cmap='gray')
+    plt.title(f'Mask image for cluster {red_cluster_label} corresponding to dark red')
+    plt.gca().invert_yaxis()
+    plt.show()
+
+
