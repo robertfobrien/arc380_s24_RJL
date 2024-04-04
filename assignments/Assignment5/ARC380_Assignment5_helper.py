@@ -1,12 +1,15 @@
 import time
 
-import pyrealsense2 as rs
+#import pyrealsense2 as rs
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 import compas.geometry as cg
 import compas_rrc as rrc
 from cv2 import aruco
+
+
+speed=10
 
 
 
@@ -117,14 +120,23 @@ def goto_task_point(task_frame, x, y, abb_rrc ):
     #print("f1_p:", f1_p)
     next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
 
+def goto_above_task_point(task_frame, x, y, z, abb_rrc ):
+    """Go to an x,y,z point in the tf"""""""""
+    task_frame.z = task_frame.z + z
+    goto_task_point(task_frame, x, y, abb_rrc )
+    task_frame.z = task_frame.z - z
+    return 1
+    
 
-def goto_robot_home():
+
+
+def goto_robot_home(abb_rrc):
     """Go to home position (linear joint move)"""
     home = rrc.RobotJoints([0, 0, 0, 0, 90, 0])
     done = abb_rrc.send_and_wait(rrc.MoveToJoints(home, [], speed, rrc.Zone.FINE))
 
 
-def goto_task_f_origin(task_frame):
+def goto_task_f_origin(task_frame,abb_rrc):
     """Go to the origin of the taskframe"""
     done = abb_rrc.send_and_wait(rrc.MoveToFrame(task_frame, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
 
@@ -133,6 +145,16 @@ def execute_tf_points(task_frame, points, abb_rrc):
     """Executes a series of points in the task frame"""
     for p in points:
         goto_task_point(task_frame, p[0], p[1], abb_rrc)
+
+def get_mm_per_pixel(pixel_width, pixel_height):
+    # get (mm)/(#pixel) 
+    actual_width = 480 #mm 
+    actual_height = 300 #mm 
+    # average them 
+    a = actual_width/pixel_width
+    b = actual_height/pixel_height
+    return (a+b)/(2.0)
+
 
 def get_shapes_info(img_path):
     # Load an image from a file
@@ -183,12 +205,16 @@ def get_shapes_info(img_path):
     ids = np.sort(ids)
 
     # Extract source points corresponding to the exterior bounding box corners of the 4 markers
-    src_pts = np.array([corners[0][0], corners[1][1], corners[2][2], corners[3][3]], dtype='float32')
+    #src_pts = np.array([corners[0][0], corners[1][1], corners[2][2], corners[3][3]], dtype='float32' # this is the original (with all the)
+    src_pts = np.array([corners[0][1], corners[1][2], corners[2][3], corners[3][0]], dtype='float32')
     #print("src points")
     #print(src_pts)
 
     # Compute the axis-aligned bounding box of the points
     x, y, w, h = cv2.boundingRect(src_pts)
+
+    mm_per_pixel = get_mm_per_pixel(w,h)
+
 
     # Crop the image using the computed bounding box
     cropped_image = img.copy()[y:y+h, x:x+w]
@@ -290,15 +316,18 @@ def get_shapes_info(img_path):
                         #print("area from perimeter: ", str((perimeter/4)**2))
                         #print("actual area: ", area)
                         is_a_good_shape = True
+                        object_info['orientation'] = cv2.minAreaRect(cnt)[2]
+                        #print(object_info['orientation'])
 
                     
                     
                     #some attributes that we're adding about this particular shape
-                    object_info['color'] = k_means_copy[cy,cx] # gets the color from the center of the shape
-                    object_info['position'] = [cx,cy]
+                    object_info['color'] = str(i) # adds the kmeans id as the 'color'
+                    object_info['position'] = [cx*mm_per_pixel,cy*mm_per_pixel]
                     object_info['size'] = area
 
-                    # TODO find orientation for a square
+                    
+
                     # ----------------------------------
 
                     #add this shape to the full array that tells us about all our shapes, but only if it's "good"
@@ -308,6 +337,23 @@ def get_shapes_info(img_path):
                         cv2.circle(output_image, (cx, cy), 5, (0, 0, 255), -1)
                         # put id on cluster
                         cv2.putText(output_image, str(i), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+
+                        # For squares, draw orientation axes
+                        if object_info['shape'] == 'square':
+                            center = (cx, cy)       # Center of the blue square (in pixels)
+                            angle_rad = np.deg2rad(int(object_info['orientation']))    # Orientation angle of the square (in radians)
+                            length = 50         # The length of the frame axes
+
+                            # Calculate the end points of each axis
+                            # X-axis (you could change color later if needed)
+                            end_x = (int(center[0] + length * np.cos(angle_rad)), int(center[1] + length * np.sin(angle_rad)))
+                            # Y-axis (rotate the angle by 90 degrees or pi/2 radians for the perpendicular)
+                            end_y = (int(center[0] + length * np.cos(angle_rad + np.pi/2)), int(center[1] + length * np.sin(angle_rad + np.pi/2)))
+
+                            # Draw the axes
+                            cv2.line(output_image, center, end_x, (0, 0, 255), 2)
+                            cv2.line(output_image, center, end_y, (0, 255, 0), 2)
 
                         # uncomment this section for us to debug each shape that we're detecting, i.e. go one by one
                         #cv2.imshow('Clusters with Centers (Excluding Small Clusters)', output_image)
@@ -327,11 +373,11 @@ def get_shapes_info(img_path):
 
 if __name__ == '__main__':
     # Make sure markers are in correct order for aruco vs plane formation
-    """ # commented out this part just to test the image processing. 
-    aruco_1 = cg.Point(271.02,483.59, 30)
-    aruco_2 = cg.Point(257.31,335.69,28)
-    aruco_3 = cg.Point(69.25, 485.12, 30)
-    aruco_4 = cg.Point(87.88,339.13,30)
+        # commented out this part just to test the image processing. 
+    aruco_1 = cg.Point(244.67, 487.16, 23.51) # Origin, bottom left
+    aruco_2 = cg.Point(235.93, 134.19, 19.29) # x-axis, top left
+    aruco_3 = cg.Point(-236.45, 496.64, 23.49) # xy-plane, bottom right
+    aruco_4 = cg.Point(-236.01, 194.54, 20.05) # Top right
     
     task_frame = create_frame_from_points(aruco_1, aruco_2, aruco_3)
 
@@ -343,15 +389,97 @@ if __name__ == '__main__':
     abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
     print('Connected.')
 
+
+    # takes the image and saves it to "test_frame.jpg" using opencv 
+    cap = cv2.VideoCapture(0)
+    ret, frame = cap.read()
+    print("Photo taken: ", str(ret))
+    cv2.imwrite('test_frame.jpg', frame)
+    cap.release()
+
+    #get all shape info. An array of object infos
+    shapes = get_shapes_info('test_frame.jpeg')
+    # sorts the shape by negative size
+    shapes = sorted(shapes, key=lambda x: -x['size'])
+
+    # for debugging
+    print(shapes)
+    print("Just got all shape info")
+
+
+    pile_height = [0, 0, 0]
+
+    for shape in shapes:
+        """""""""
+        shape is in the form: 
+        object_info = {
+                "color":
+                "shape": circle or square
+                "size": int representing pixel area
+                "position": in mm,mm 
+                "orientation": 
+            }
+        """
+
+
+        pos = shape['position']# [x,y] in mm
+
+        # TODO go just above the point
+        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rcc)
+       
+        # go to the actual shape
+        goto_task_point(task_frame, pos[0], pos[1], abb_rrc)
+
+        # TODO activate the suction
+        low = 0
+        high = 1
+        done = abb.send_and_wait(rrc.SetDigital('DO00',high))
+
+        # TODO add wait time for suction to engage
+        time = 1.0 # Unit [s]
+        done = abb.send_and_wait(rrc.WaitTime(time))
+        
+        #lift it above 
+        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rcc)
+
+                
+        if shape['color'] == 1:
+            x, y = 0,0
+        elif shape['color'] == 2:
+            x, y = 0,50
+        if shape['color'] == 3:
+            x, y = 0,100
+
+        # TODO take it somehwere else
+        goto_above_task_point(task_frame, x, y, 10, abb_rcc)  
+       
+        # Lower it to the new location, with some leeway
+        goto_above_task_point(task_frame, x, y, pile_height[shape['color'] - 1] + 5, abb_rcc)
+
+        # turn off suction
+        done = abb.send_and_wait(rrc.SetDigital('DO00',low))
+
+        # Update pile height
+        pile_height[shape['color'] - 1] += 3
+
+        # TODO wait time for suction to de engage
+        time = 1.0 # Unit [s]
+        done = abb.send_and_wait(rrc.WaitTime(time))
+
+        #TODO raise above the pile so it doesnt knock it over 
+        goto_above_task_point(task_frame, x, y, 50, abb_rcc)
+
+        # TODO go to just drop zone to be ready for next shape 
+        pass
+
     # End of Code
     print('Finished')
 
     # Close client
     ros.close()
     ros.terminate()
-    """
+        
+        
 
-    #code to test the image proccessing
-    shapes = get_shapes_info('test_frame.jpeg')
-    print(shapes)
+
 
