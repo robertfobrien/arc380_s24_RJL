@@ -231,7 +231,7 @@ def get_shapes_info(img_path):
     img_data = np.float32(img_data)
 
     # Define the number of clusters
-    k = 10
+    k = 8
 
     # Define the criteria for the k-means algorithm
     # This is a tuple with three elements: (type of termination criteria, maximum number of iterations, epsilon/required accuracy)
@@ -307,17 +307,22 @@ def get_shapes_info(img_path):
                     # determines if a shape is a circle or square, the only "good" ones
                     is_a_good_shape = False 
 
+
                     if roundness > 0.85: # testing for circle
                         object_info['shape'] = "circle"
                         num_circles = num_circles + 1
                         is_a_good_shape = True
-                    elif np.abs(area - (perimeter/4)**2) < 150: # testing for square --> making sure (0.25*perim)^2 is close to the area of the object
+                    elif np.abs(area - (perimeter/4)**2) < 900: # testing for square --> making sure (0.25*perim)^2 is close to the area of the object
                         object_info['shape'] = "square"
                         #print("area from perimeter: ", str((perimeter/4)**2))
                         #print("actual area: ", area)
                         is_a_good_shape = True
                         object_info['orientation'] = cv2.minAreaRect(cnt)[2]
                         #print(object_info['orientation'])
+
+                    if np.abs(area - (perimeter/4)**2) < 1500:
+                        print("squareness: :", np.abs(area - (perimeter/4)**2))
+                        print("seen as a: ",  object_info['shape'])
 
                     
                     
@@ -399,6 +404,11 @@ if __name__ == '__main__':
     ret, frame = cap.read()
     time.sleep(2)
     ret, frame = cap.read()
+
+    cv2.imshow('raw frame', frame)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
     print("Photo taken: ", str(ret))
     cv2.imwrite('test_frame.jpg', frame)
     cap.release()
