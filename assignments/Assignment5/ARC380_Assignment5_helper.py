@@ -231,7 +231,7 @@ def get_shapes_info(img_path):
     img_data = np.float32(img_data)
 
     # Define the number of clusters
-    k = 5
+    k = 10
 
     # Define the criteria for the k-means algorithm
     # This is a tuple with three elements: (type of termination criteria, maximum number of iterations, epsilon/required accuracy)
@@ -395,7 +395,7 @@ if __name__ == '__main__':
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
     cap = cv2.VideoCapture(0)
-    #cap.set(cv2.CAP_PROP_EXPOSURE, -4)
+    cap.set(cv2.CAP_PROP_EXPOSURE, -4)
     ret, frame = cap.read()
     time.sleep(2)
     ret, frame = cap.read()
@@ -404,7 +404,15 @@ if __name__ == '__main__':
     cap.release()
 
     #get all shape info. An array of object infos
+    
     shapes = get_shapes_info('test_frame.jpg')
+
+    # remap the unique shape values to 0,1,2,...
+    unique_colors = sorted(set(item['color'] for item in shapes))
+    color_to_group = {shape: str(i) for i, shape in enumerate(unique_colors)}
+    for shape in shapes:
+        shape['color'] = color_to_group[shape['color']]
+
     # sorts the shape by negative size
     shapes = sorted(shapes, key=lambda x: -x['size'])
 
