@@ -231,7 +231,7 @@ def get_shapes_info(img_path):
     img_data = np.float32(img_data)
 
     # Define the number of clusters
-    k = 4
+    k = 5
 
     # Define the criteria for the k-means algorithm
     # This is a tuple with three elements: (type of termination criteria, maximum number of iterations, epsilon/required accuracy)
@@ -395,7 +395,7 @@ if __name__ == '__main__':
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_EXPOSURE, -4)
+    #cap.set(cv2.CAP_PROP_EXPOSURE, -4)
     ret, frame = cap.read()
     time.sleep(2)
     ret, frame = cap.read()
@@ -454,25 +454,15 @@ if __name__ == '__main__':
         #lift it above 
         goto_above_task_point(task_frame, pos[0], pos[1], 50, abb_rrc) #10mm
 
-        if shape['color'] == 0:
-            x,y = [0,200]
-        if shape['color'] == 1:
-            x, y = [0,0]
-        elif shape['color'] == 2:
-            x, y = [0,100]
-        elif shape['color'] == 3:
-            x, y = [0,150]
-        else: 
-            x, y = [0,0]
-
-        print("target pile: ", x, y)
+        pile_changer_multiplier = 120 #mm
+        print("target pile: ", int(shape['color'])*pile_changer_multiplier, 0)
 
         # take it to its pile 
-        goto_above_task_point(task_frame, x, y, 50, abb_rrc)  
+        goto_above_task_point(task_frame, int(shape['color'])*pile_changer_multiplier, 0, 50, abb_rrc)  
        
         # Lower it to the new location, with some leeway 
         # int(pile_height[shape['color'] - 1] + 5)
-        goto_above_task_point(task_frame, x, y, 10, abb_rrc)
+        goto_above_task_point(task_frame, int(shape['color'])*pile_changer_multiplier, 0, 10, abb_rrc)
         # Update pile height
         #pile_height[shape['color'] - 1] += 3
 
@@ -484,7 +474,7 @@ if __name__ == '__main__':
         done = abb_rrc.send_and_wait(rrc.WaitTime(t))
 
         #raise above the pile so it doesnt knock it over 
-        goto_above_task_point(task_frame, x, y, 50, abb_rrc)
+        goto_above_task_point(task_frame, int(shape['color'])*pile_changer_multiplier, 0, 50, abb_rrc)
 
     # End of Code
     print('Finished')
