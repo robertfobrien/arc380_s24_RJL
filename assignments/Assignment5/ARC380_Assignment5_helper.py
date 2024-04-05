@@ -9,7 +9,7 @@ import compas_rrc as rrc
 from cv2 import aruco
 
 
-speed=10
+speed=75
 
 
 
@@ -122,9 +122,9 @@ def goto_task_point(task_frame, x, y, abb_rrc ):
 
 def goto_above_task_point(task_frame, x, y, z, abb_rrc ):
     """Go to an x,y,z point in the tf"""""""""
-    task_frame.z = task_frame.z + z
+    task_frame.point.z = task_frame.point.z + z
     goto_task_point(task_frame, x, y, abb_rrc )
-    task_frame.z = task_frame.z - z
+    task_frame.point.z = task_frame.point.z - z
     return 1
     
 
@@ -378,8 +378,11 @@ if __name__ == '__main__':
     aruco_2 = cg.Point(235.93, 134.19, 19.29) # x-axis, top left
     aruco_3 = cg.Point(-236.45, 496.64, 23.49) # xy-plane, bottom right
     aruco_4 = cg.Point(-236.01, 194.54, 20.05) # Top right
-    
-    task_frame = create_frame_from_points(aruco_1, aruco_2, aruco_3)
+
+    pt_1 =  cg.Point(-229.38, 487, 27)
+    pt_2 =  cg.Point(250.88, 479.54, 22.43)
+    pt_3 = cg.Point(-229.11, 195.16, 24.39)
+    task_frame = create_frame_from_points(pt_1, pt_2, pt_3)
 
     # Create Ros Client
     ros = rrc.RosClient()
@@ -392,13 +395,16 @@ if __name__ == '__main__':
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_EXPOSURE, -4)
+    ret, frame = cap.read()
+    time.sleep(2)
     ret, frame = cap.read()
     print("Photo taken: ", str(ret))
     cv2.imwrite('test_frame.jpg', frame)
     cap.release()
 
     #get all shape info. An array of object infos
-    shapes = get_shapes_info('test_frame.jpeg')
+    shapes = get_shapes_info('test_frame.jpg')
     # sorts the shape by negative size
     shapes = sorted(shapes, key=lambda x: -x['size'])
 
@@ -410,6 +416,7 @@ if __name__ == '__main__':
     pile_height = [0, 0, 0]
 
     for shape in shapes:
+        print("going to shape one")
 
         """""""""
         shape is in the form: 
@@ -425,48 +432,59 @@ if __name__ == '__main__':
 
         pos = shape['position'] # [x,y] in mm
 
+        print("pos: ", pos)
+
         # go just above the shape
-        goto_above_task_point(task_frame, pos[0], pos[1], 50, abb_rcc)
+        print("going above the shape")
+        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rrc)
        
         # go down to the actual shape
+        print("going down to the shape")
         goto_task_point(task_frame, pos[0], pos[1], abb_rrc)
 
         #  activate the suction
         low = 0
         high = 1
-        done = abb_rcc.send_and_wait(rrc.SetDigital('DO00',high))
+        done = abb_rrc.send_and_wait(rrc.SetDigital('DO00',high))
 
         # add wait time for suction to engage
         t = 1.0 # Unit [s]
-        done = abb_rcc.send_and_wait(rrc.WaitTime(t))
+        done = abb_rrc.send_and_wait(rrc.WaitTime(t))
         
         #lift it above 
-        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rcc) #10mm
+        goto_above_task_point(task_frame, pos[0], pos[1], 50, abb_rrc) #10mm
 
+        if shape['color'] == 0:
+            x,y = [0,200]
         if shape['color'] == 1:
             x, y = [0,0]
         elif shape['color'] == 2:
-            x, y = [0,50]
-        if shape['color'] == 3:
             x, y = [0,100]
+        elif shape['color'] == 3:
+            x, y = [0,150]
+        else: 
+            x, y = [0,0]
+
+        print("target pile: ", x, y)
 
         # take it to its pile 
-        goto_above_task_point(task_frame, x, y, 10, abb_rcc)  
+        goto_above_task_point(task_frame, x, y, 50, abb_rrc)  
        
-        # Lower it to the new location, with some leeway
-        goto_above_task_point(task_frame, x, y, pile_height[shape['color'] - 1] + 5, abb_rcc)
+        # Lower it to the new location, with some leeway 
+        # int(pile_height[shape['color'] - 1] + 5)
+        goto_above_task_point(task_frame, x, y, 10, abb_rrc)
         # Update pile height
-        pile_height[shape['color'] - 1] += 3
+        #pile_height[shape['color'] - 1] += 3
 
         # turn off suction
-        done = abb.send_and_wait(rrc.SetDigital('DO00',low))
+        done = abb_rrc.send_and_wait(rrc.SetDigital('DO00',low))
 
         # wait time for suction to de engage
         t = 1.0 # Unit [s]
-        done = abb.send_and_wait(rrc.WaitTime(t))
+        done = abb_rrc.send_and_wait(rrc.WaitTime(t))
 
         #raise above the pile so it doesnt knock it over 
-        goto_above_task_point(task_frame, x, y, 50, abb_rcc)
+        goto_above_task_point(task_frame, x, y, 50, abb_rrc)
 
     # End of Code
     print('Finished')

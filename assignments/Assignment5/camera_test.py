@@ -1,6 +1,9 @@
 
 import cv2
+import time
 cap = cv2.VideoCapture(0)
+ret, frame = cap.read()
+time.sleep(1)
 ret, frame = cap.read()
 print(ret)
 
