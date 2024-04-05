@@ -410,6 +410,7 @@ if __name__ == '__main__':
     pile_height = [0, 0, 0]
 
     for shape in shapes:
+
         """""""""
         shape is in the form: 
         object_info = {
@@ -422,55 +423,50 @@ if __name__ == '__main__':
         """
 
 
-        pos = shape['position']# [x,y] in mm
+        pos = shape['position'] # [x,y] in mm
 
-        # TODO go just above the point
-        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rcc)
+        # go just above the shape
+        goto_above_task_point(task_frame, pos[0], pos[1], 50, abb_rcc)
        
-        # go to the actual shape
+        # go down to the actual shape
         goto_task_point(task_frame, pos[0], pos[1], abb_rrc)
 
-        # TODO activate the suction
+        #  activate the suction
         low = 0
         high = 1
-        done = abb.send_and_wait(rrc.SetDigital('DO00',high))
+        done = abb_rcc.send_and_wait(rrc.SetDigital('DO00',high))
 
-        # TODO add wait time for suction to engage
-        time = 1.0 # Unit [s]
-        done = abb.send_and_wait(rrc.WaitTime(time))
+        # add wait time for suction to engage
+        t = 1.0 # Unit [s]
+        done = abb_rcc.send_and_wait(rrc.WaitTime(t))
         
         #lift it above 
-        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rcc)
+        goto_above_task_point(task_frame, pos[0], pos[1], 10, abb_rcc) #10mm
 
-                
         if shape['color'] == 1:
-            x, y = 0,0
+            x, y = [0,0]
         elif shape['color'] == 2:
-            x, y = 0,50
+            x, y = [0,50]
         if shape['color'] == 3:
-            x, y = 0,100
+            x, y = [0,100]
 
-        # TODO take it somehwere else
+        # take it to its pile 
         goto_above_task_point(task_frame, x, y, 10, abb_rcc)  
        
         # Lower it to the new location, with some leeway
         goto_above_task_point(task_frame, x, y, pile_height[shape['color'] - 1] + 5, abb_rcc)
+        # Update pile height
+        pile_height[shape['color'] - 1] += 3
 
         # turn off suction
         done = abb.send_and_wait(rrc.SetDigital('DO00',low))
 
-        # Update pile height
-        pile_height[shape['color'] - 1] += 3
+        # wait time for suction to de engage
+        t = 1.0 # Unit [s]
+        done = abb.send_and_wait(rrc.WaitTime(t))
 
-        # TODO wait time for suction to de engage
-        time = 1.0 # Unit [s]
-        done = abb.send_and_wait(rrc.WaitTime(time))
-
-        #TODO raise above the pile so it doesnt knock it over 
+        #raise above the pile so it doesnt knock it over 
         goto_above_task_point(task_frame, x, y, 50, abb_rcc)
-
-        # TODO go to just drop zone to be ready for next shape 
-        pass
 
     # End of Code
     print('Finished')
