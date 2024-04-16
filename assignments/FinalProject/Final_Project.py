@@ -74,23 +74,33 @@ def pca(cluster):
 
     cluster_axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05, origin=mean)
     cluster_axes.rotate(v, center=mean)
+
+    sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.003)
+    sphere.translate(mean)
+
     return mean, cluster_axes
 
-# TESTING THE ABOVE FUNCTIONS  -rob
+# TESTING THE ABOVE FUNCTIONS  -rob #########################################################
 print("taking in PCD")
 pcd = o3d.io.read_point_cloud("example_pcd.ply")
 outlier_pcd, labels, coordinate_frame =  get_clusters(pcd)
-#o3d.visualization.draw_geometries([outlier_pcd, coordinate_frame])
+#o3d.visualization.draw_geometries([outlier_pcd, coordinate_frame]) # to view all blocks
 
+#visualize block 1
 block_0 = get_cluster_n(outlier_pcd, labels, 0) # 0 is the index of the block we want
-#print("block 0")
-#print(block_0)
-#o3d.visualization.draw_geometries([block_0, coordinate_frame])
-
 mean, cluster_axis = pca(block_0)
+mean_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.008)
+mean_sphere.translate(mean)
+#o3d.visualization.draw_geometries([cluster_axis, block_0, coordinate_frame, mean_sphere])
 
-o3d.visualization.draw_geometries([cluster_axis, block_0, coordinate_frame])
-# END OF TESTING THE FUNCTIONS
+#visualize block 2
+block_1 = get_cluster_n(outlier_pcd, labels, 1) # 0 is the index of the block we want
+mean, cluster_axis = pca(block_1)
+mean_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.008)
+mean_sphere.translate(mean)
+o3d.visualization.draw_geometries([cluster_axis, block_1, coordinate_frame, mean_sphere])
+
+# END OF TESTING THE FUNCTIONS #########################################################
 
 
 # Configure depth and color streams
@@ -145,6 +155,13 @@ try:
     # Export the point cloud to a PLY file
     pointcloud.export_to_ply("output.ply", color_frame)
     print("Point cloud saved to 'output.ply'.")
+
+    # we have the point cloud now... so we will do this: 
+    #pcd = o3d.io.read_point_cloud("output.ply")
+    #outlier_pcd, labels, coordinate_frame =  get_clusters(pcd)
+    #block_0 = get_cluster_n(outlier_pcd, labels, 0) # 0 is the index of the block we want
+    #mean, cluster_axis = pca(block_0)
+    #o3d.visualization.draw_geometries([cluster_axis, block_0, coordinate_frame])
 
 finally:
     # Stop pipeline
