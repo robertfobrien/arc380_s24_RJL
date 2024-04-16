@@ -6,6 +6,7 @@ import open3d as o3d
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
+from cv2 import aruco
 
 def get_clusters(pcd):
     """ takes in a PCD and returns the clusters -rob"""
@@ -79,6 +80,249 @@ def pca(cluster):
     sphere.translate(mean)
 
     return mean, cluster_axes
+
+# Reduces shadows on white background and brightens the color of acrylic pieces 
+# for better k-means clustering. Can be fine-tuned for better performance.
+def process_for_kmeans(img_file):
+    img = cv2.imread(img_file)
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    h = img_hsv[:,:,0] # Hue
+    s = img_hsv[:,:,1] # Saturation
+    v = img_hsv[:,:,2] # Value
+
+    for i in range(len(v)):
+        for j in range(len(v[i])):
+
+            if s[i][j] < 150 and v[i][j] < 50:
+                # Leave black as is (for ArUco markers)
+                pass
+            elif s[i][j] < 50 and v[i][j] > 50:
+                # Minimize shadows on white background
+                s[i][j] = 0
+                v[i][j] = 255
+            else:
+                # Lighten/brighten the pixel
+                v[i][j] = min(v[i][j] + 100, 255)
+
+    merged = cv2.merge([h, s, v])
+    processed = cv2.cvtColor(merged, cv2.COLOR_HSV2BGR)
+
+    return processed
+
+def get_mm_per_pixel(pixel_width, pixel_height):
+    # get (mm)/(#pixel) 
+    actual_width = 480 #mm 
+    actual_height = 300 #mm 
+    # average them 
+    a = actual_width/pixel_width
+    b = actual_height/pixel_height
+    return (a+b)/(2.0)
+
+def get_shapes_info(img_path):
+    # Load an image from a file
+    img = cv2.imread(img_path)
+    # Convert the image from BGR to RGB and display using matplotlib
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # Load the predefined dictionary where our markers are printed from
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+
+    # Load the default detector parameters
+    detector_params = aruco.DetectorParameters()
+
+    # Create an ArucoDetector using the dictionary and detector parameters
+    detector = aruco.ArucoDetector(dictionary, detector_params)
+    corners, ids, rejected = detector.detectMarkers(img)
+    markers_img = img_rgb.copy()
+    aruco.drawDetectedMarkers(markers_img, corners, ids)
+
+    # show the ardutags on the screen 
+    #plt.figure(figsize=(16,9))
+    #plt.imshow(markers_img)
+    #plt.title('Detected ArUco markers')
+    #plt.show()
+
+    # Define the dimensions of the output image
+    width = 10      # inches
+    height = 7.5    # inches
+    ppi = 45        # pixels per inch (standard resolution for most screens - can be any arbitrary value that still preserves information)
+
+    _ids = ids.flatten()
+    #print(_ids)
+    #print(np.argsort(_ids))
+
+    # Sort corners based on id
+    ids = ids.flatten()
+    #print(ids)
+
+    # Sort the corners based on the ids
+    corners = np.array([corners[i] for i in np.argsort(ids)])
+    #print(corners.shape)
+
+    # Remove dimensions of size 1
+    corners = np.squeeze(corners)
+    #print(corners)
+
+    # Sort the ids
+    ids = np.sort(ids)
+
+    # Extract source points corresponding to the exterior bounding box corners of the 4 markers
+    #src_pts = np.array([corners[0][0], corners[1][1], corners[2][2], corners[3][3]], dtype='float32' # this is the original (with all the)
+    src_pts = np.array([corners[0][1], corners[1][2], corners[2][3], corners[3][0]], dtype='float32')
+    #print("src points")
+    #print(src_pts)
+
+    # Compute the axis-aligned bounding box of the points
+    x, y, w, h = cv2.boundingRect(src_pts)
+
+    mm_per_pixel = get_mm_per_pixel(w,h)
+
+
+    # Crop the image using the computed bounding box
+    cropped_image = img.copy()[y:y+h, x:x+w]
+
+    # display the cropped image to the id tags
+    #plt.imshow(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
+    #plt.title('cropped image')
+    #plt.show()
+
+    # Run k-means clustering on the image
+
+    # Reshape our image data to a flattened list of RGB values
+    img_data = cropped_image.reshape((-1, 3))
+    img_data = np.float32(img_data)
+
+    # Define the number of clusters
+    k = 8
+
+    # Define the criteria for the k-means algorithm
+    # This is a tuple with three elements: (type of termination criteria, maximum number of iterations, epsilon/required accuracy)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+
+    # Run the k-means algorithm
+    # Parameters: data, number of clusters, best labels, criteria, number of attempts, initial centers
+    _, labels, centers = cv2.kmeans(img_data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+
+    #print(f'Labels shape: {labels.shape}')
+    #print(f'Centers shape: {centers.shape}')
+    #print(f'Centers: \n{centers}')
+
+    # The output of the k-means algorithm gives the centers as floating point values
+    # We need to convert these back to uint8 to be able to use them as pixel values
+    centers = np.uint8(centers)
+
+    # Rebuild the image using the labels and centers
+    kmeans_data = centers[labels.flatten()]
+    kmeans_img = kmeans_data.reshape(cropped_image.shape)
+    labels = labels.reshape(cropped_image.shape[:2])
+
+    output_image = kmeans_img.copy()
+    k_means_copy = kmeans_img.copy()
+
+    # shape dictionary we will use to store all the info about shapes
+    shape_dict = []
+    """
+    Color
+    Shape (i.e., circle or square)
+    Size
+    Position (in the world frame)
+    Orientation (if it is a square)
+    """
+    num_circles = 0
+
+    # Loop through each cluster
+    for i in range(k):
+        # Create a mask for the current cluster
+        mask = (labels == i).astype(np.uint8) * 255
+
+        # find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for cnt in contours: # this will run for each shape 
+            object_info = {
+                "color": None,
+                "shape": None,
+                "size": None,  
+                "position": None,
+                "orientation": None 
+            }
+            # make sure we're above our threshold
+            if cv2.contourArea(cnt) > 340 and cv2.contourArea(cnt) <  140000:
+                #print("area, " + str(cv2.contourArea(cnt)))
+
+                # draws the outer contour
+                #cv2.drawContours(output_image, [cnt], -1, (0, 255, 0), 2)
+
+                # center
+                M = cv2.moments(cnt)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+
+                    area = cv2.contourArea(cnt)
+                    perimeter = cv2.arcLength(cnt, closed=True)
+
+                    #determining shape type
+                    roundness = (4 * np.pi * area) / perimeter**2
+                    #print("roundness, ", roundness)
+
+                    # determines if a shape is a circle or square, the only "good" ones
+                    is_a_good_shape = False 
+
+
+                    if roundness > 0.85: # testing for circle
+                        object_info['shape'] = "circle"
+                        num_circles = num_circles + 1
+                        is_a_good_shape = True
+                    elif np.abs(area - (perimeter/4)**2) < 900: # testing for square --> making sure (0.25*perim)^2 is close to the area of the object
+                        object_info['shape'] = "square"
+                        #print("area from perimeter: ", str((perimeter/4)**2))
+                        #print("actual area: ", area)
+                        is_a_good_shape = True
+                        object_info['orientation'] = cv2.minAreaRect(cnt)[2]
+                        #print(object_info['orientation'])
+
+                    if np.abs(area - (perimeter/4)**2) < 1500:
+                        print("squareness: :", np.abs(area - (perimeter/4)**2))
+                        print("seen as a: ",  object_info['shape'])
+                    
+                    
+                    #some attributes that we're adding about this particular shape
+                    object_info['color'] = str(i) # adds the kmeans id as the 'color'
+                    object_info['position'] = [cx*mm_per_pixel,cy*mm_per_pixel]
+                    object_info['size'] = area
+
+                    
+                    #add this shape to the full array that tells us about all our shapes, but only if it's "good"
+                    if is_a_good_shape:
+                        shape_dict.append(object_info)
+                        # center of cluster
+                        cv2.circle(output_image, (cx, cy), 5, (0, 0, 255), -1)
+                        # put id on cluster
+                        cv2.putText(output_image, str(i), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+
+                        # For squares, draw orientation axes
+                        if object_info['shape'] == 'square':
+                            center = (cx, cy)       # Center of the blue square (in pixels)
+                            angle_rad = np.deg2rad(int(object_info['orientation']))    # Orientation angle of the square (in radians)
+                            length = 50         # The length of the frame axes
+
+                            # Calculate the end points of each axis
+                            # X-axis (you could change color later if needed)
+                            end_x = (int(center[0] + length * np.cos(angle_rad)), int(center[1] + length * np.sin(angle_rad)))
+                            # Y-axis (rotate the angle by 90 degrees or pi/2 radians for the perpendicular)
+                            end_y = (int(center[0] + length * np.cos(angle_rad + np.pi/2)), int(center[1] + length * np.sin(angle_rad + np.pi/2)))
+
+                            # Draw the axes
+                            cv2.line(output_image, center, end_x, (0, 0, 255), 2)
+                            cv2.line(output_image, center, end_y, (0, 255, 0), 2)
+                
+    cv2.imshow('Clusters with Centers (Excluding Small Clusters)', output_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    return shape_dict
 
 # TESTING THE ABOVE FUNCTIONS  -rob #########################################################
 print("taking in PCD")
