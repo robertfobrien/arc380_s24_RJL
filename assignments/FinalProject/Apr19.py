@@ -114,22 +114,22 @@ def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) ->
     # ====================================================================================
     return ee_frame_w
 
+def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
+    joints = abb_rrc.send_and_wait(rrc.GetJoints()) # get the current state of the joints
+    joints[0] = orientation # only change the end effector value
+    done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
 
 def goto_task_point(task_frame, x, y, abb_rrc, desired_angle=0):
     """ goe to a point in the task frame"""
     f1 = cg.Frame([x,y,0], [1,0,0], [0,1,0]) #[1,0,0] and [0,1,0] define the x and y planes
     f1_p = transform_task_to_world_frame(f1, task_frame)
     next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
-
-def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
-    joints = abb_rrc.send_and_wait(rrc.GetJoints()) # get the current state of the joints
-    joints[0] = orientation # only change the end effector value
-    done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
+    orient = change_end_effector_orientation(task_frame, desired_angle, abb_rrc)
     
 def goto_above_task_point(task_frame, x, y, z, abb_rrc, desired_angle=0):
     """Go to an x,y,z point in the tf"""""""""
     task_frame.point.z = task_frame.point.z + z
-    goto_task_point(task_frame, x, y, abb_rrc, desired_angle=desired_angle)
+    task = goto_task_point(task_frame, x, y, abb_rrc, desired_angle=desired_angle)
     task_frame.point.z = task_frame.point.z - z
     return 1
 
