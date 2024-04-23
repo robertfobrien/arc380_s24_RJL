@@ -380,7 +380,7 @@ block_0 = get_cluster_n(outlier_pcd, labels, 0) # 0 is the index of the block we
 mean, cluster_axis = pca(block_0)
 mean_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.008)
 mean_sphere.translate(mean)
-#o3d.visualization.draw_geometries([cluster_axis, block_0, coordinate_frame, mean_sphere])
+o3d.visualization.draw_geometries([cluster_axis, block_0, coordinate_frame, mean_sphere])
 
 #visualize block 2
 block_1 = get_cluster_n(outlier_pcd, labels, 1) # 0 is the index of the block we want

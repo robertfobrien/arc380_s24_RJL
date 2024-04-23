@@ -115,21 +115,21 @@ def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) ->
     return ee_frame_w
 
 def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
-    joints = abb_rrc.send_and_wait(rrc.GetJoints()) # get the current state of the joints
-    joints[0] = orientation # only change the end effector value
+    orientation = orientation + 75
+    joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
+    joints.rax_6 = orientation # only change the end effector value
     done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
 
-def goto_task_point(task_frame, x, y, abb_rrc, desired_angle=0):
+def goto_task_point(task_frame, x, y, abb_rrc):
     """ goe to a point in the task frame"""
     f1 = cg.Frame([x,y,0], [1,0,0], [0,1,0]) #[1,0,0] and [0,1,0] define the x and y planes
     f1_p = transform_task_to_world_frame(f1, task_frame)
-    next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
-    orient = change_end_effector_orientation(task_frame, desired_angle, abb_rrc)
-    
-def goto_above_task_point(task_frame, x, y, z, abb_rrc, desired_angle=0):
+    next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))   
+
+def goto_above_task_point(task_frame, x, y, z, abb_rrc):
     """Go to an x,y,z point in the tf"""""""""
     task_frame.point.z = task_frame.point.z + z
-    task = goto_task_point(task_frame, x, y, abb_rrc, desired_angle=desired_angle)
+    task = goto_task_point(task_frame, x, y, abb_rrc)
     task_frame.point.z = task_frame.point.z - z
     return 1
 
@@ -225,7 +225,7 @@ def get_shapes_info(img_path, expected_k):
 
     gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0) 
-    ret,block_thresh = cv2.threshold(blurred,50,255,cv2.THRESH_BINARY)
+    ret,block_thresh = cv2.threshold(blurred,90,255,cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(block_thresh,cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     block_contours = []
     block_centers = []
@@ -261,10 +261,12 @@ def get_shapes_info(img_path, expected_k):
             #cv2.line(cropped_copy, (cx,cy), end_x, (0, 0, 255), 2)
             cv2.line(cropped_copy, (cx,cy), end_y, (0, 255, 0), 2)
             cv2.putText(cropped_copy, str(" B"), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    cv2.drawContours(block_thresh, block_contours, -1, (0,255,0), 3)
+    cv2.imshow('Circles and blocks', block_thresh)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     #print("block centers = ", block_centers)
     #print("block orientations = ", block_orientations)
-    #cv2.drawContours(cropped_copy, block_contours, -1, (0,255,0), 3)
-
     # display the cropped image to the id tags
     #plt.imshow(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
     #plt.title('cropped image')
@@ -458,10 +460,13 @@ if __name__ == '__main__':
     aruco_3 = cg.Point(-236.45, 496.64, 23.49) # xy-plane, bottom right
     aruco_4 = cg.Point(-236.01, 194.54, 20.05) # Top right
 
-    pt_1 =  cg.Point(-229.38, 487, 27)
-    pt_2 =  cg.Point(250.88, 479.54, 22.43)
-    pt_3 = cg.Point(-229.11, 195.16, 24.39)
+    pt_1 =  cg.Point(-236.41, 494.42, 24.13)
+    pt_2 =  cg.Point(250.35, 491.66, 23.13)
+    pt_3 = cg.Point(-235.71, 190.92, 23.26)
     task_frame = create_frame_from_points(pt_1, pt_2, pt_3)
+
+    print("TASK FRAME")
+    print(task_frame)
 
     # Create Ros Client
     ros = rrc.RosClient()
@@ -470,6 +475,12 @@ if __name__ == '__main__':
     # Create ABB Client
     abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
     print('Connected.')
+
+    goto_above_task_point
+    goto_above_task_point(x = 250, y=250, z=10, task_frame=task_frame, abb_rrc=abb_rrc)
+    change_end_effector_orientation(task_frame=task_frame, orientation=75, abb_rrc=abb_rrc)
+    goto_above_task_point(x = 250, y=250, z=20, task_frame=task_frame, abb_rrc=abb_rrc)
+    
 
     # Load the design
     f = open('tower.json')
@@ -492,13 +503,14 @@ if __name__ == '__main__':
     time.sleep(2)
     ret, frame = cap.read()
 
-    #cv2.imshow('raw frame', frame)
-    #cv2.waitKey(0)
-    #cv2.destroyAllWindows()
-    #cv2.imwrite('test_frame.jpg', frame)
+    cv2.imshow('raw frame', frame)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    cv2.imwrite('test_frame.jpg', frame)
 
     print("Photo taken: ", str(ret))
     cap.release()
+
 
     #get all shape info. An array of object infos
     shapes = get_shapes_info('test_frame.jpg', expected_k)
@@ -553,13 +565,16 @@ if __name__ == '__main__':
 
             print("going above the shape")
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc)
+            change_end_effector_orientation(task_frame=task_frame, orientation=match['orientation'], abb_rrc=abb_rrc)
 
             # go down to the actual shape
             print("going down to the shape")
-            if match['shape'] == 'block':
-                goto_above_task_point(task_frame, x, y, BLOCK_HEIGHT, abb_rrc)
+            if object['shape'] == 'block':
+                print("Moving to shape, Block")
+                goto_above_task_point(x=x, y=y, z=BLOCK_HEIGHT, task_frame=task_frame, abb_rrc=abb_rrc)
             else:
-                goto_above_task_point(task_frame, x, y, ACRYLIC_HEIGHT, abb_rrc)
+                print("Moving to shape, Not block")
+                goto_above_task_point(task_frame=task_frame, x=x, y=y, z=ACRYLIC_HEIGHT, abb_rrc=abb_rrc)
 
             # Changes the end effector to match the shape we're gonna pick up
             change_end_effector_orientation(task_frame, match['orientation'], abb_rrc)
@@ -585,7 +600,7 @@ if __name__ == '__main__':
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc) #10mm
 
             #change orientation to final orientation
-            change_end_effector_orientation(task_frame, object['orientation'], abb_rrc)
+            #change_end_effector_orientation(task_frame=task_frame, orientation=object['orientation'], abb_rrc=abb_rrc)
 
             # Move to target
             goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER, abb_rrc) #10mm
