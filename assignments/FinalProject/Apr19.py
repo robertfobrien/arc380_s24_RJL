@@ -115,21 +115,23 @@ def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) ->
     return ee_frame_w
 
 
-def goto_task_point(task_frame, x, y, abb_rrc ):
-    """Goes to the point x, y on the task frame (on the paper). x and y are in millimeters"""
+def goto_task_point(task_frame, x, y, abb_rrc, desired_angle=0):
+    """ goe to a point in the task frame"""
     f1 = cg.Frame([x,y,0], [1,0,0], [0,1,0]) #[1,0,0] and [0,1,0] define the x and y planes
     f1_p = transform_task_to_world_frame(f1, task_frame)
     next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
 
-def goto_above_task_point(task_frame, x, y, z, abb_rrc ):
+def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
+    joints = abb_rrc.send_and_wait(rrc.GetJoints()) # get the current state of the joints
+    joints[0] = orientation # only change the end effector value
+    done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
+    
+def goto_above_task_point(task_frame, x, y, z, abb_rrc, desired_angle=0):
     """Go to an x,y,z point in the tf"""""""""
     task_frame.point.z = task_frame.point.z + z
-    goto_task_point(task_frame, x, y, abb_rrc)
+    goto_task_point(task_frame, x, y, abb_rrc, desired_angle=desired_angle)
     task_frame.point.z = task_frame.point.z - z
     return 1
-    
-
-
 
 def goto_robot_home(abb_rrc):
     """Go to home position (linear joint move)"""
@@ -219,6 +221,49 @@ def get_shapes_info(img_path, expected_k):
 
     # Crop the image using the computed bounding box
     cropped_image = img.copy()[y:y+h, x:x+w]
+    cropped_copy = cropped_image.copy()
+
+    gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (7, 7), 0) 
+    ret,block_thresh = cv2.threshold(blurred,50,255,cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(block_thresh,cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    block_contours = []
+    block_centers = []
+    block_orientations = []
+    for contour in contours: 
+        shape_area = cv2.contourArea(contour)
+        if shape_area > 3000 and shape_area < 4000:
+            #print("Blocks found with area: ", shape_area)
+            block_contours.append(contour)
+            # center
+            M = cv2.moments(contour)
+            if M['m00'] != 0:
+                cx = int(M['m10'] / M['m00'])
+                cy = int(M['m01'] / M['m00'])
+                block_centers.append((cx,cy))
+                cv2.circle(cropped_copy, (cx, cy), 5, (0, 0, 255), -1)
+
+            rect = cv2.minAreaRect(contour)
+
+            #fixing orientation problems 
+            orientation = rect[2]
+            if orientation < 45:
+                orientation = orientation + 90
+            
+            block_orientations.append(orientation)
+            angle_rad = np.deg2rad(int(orientation))    # Orientation angle of the rectangle (in radians)
+            length = 20         # The length of the frame axes
+            # Calculate the end points of each axis
+            # X-axis (you could change color later if needed)
+            #end_x = (int(cx + length * np.cos(angle_rad)), int(cy + length * np.sin(angle_rad)))
+            # Y-axis (rotate the angle by 90 degrees or pi/2 radians for the perpendicular)
+            end_y = (int(cx + length * np.cos(angle_rad + np.pi/2)), int(cy + length * np.sin(angle_rad + np.pi/2)))
+            #cv2.line(cropped_copy, (cx,cy), end_x, (0, 0, 255), 2)
+            cv2.line(cropped_copy, (cx,cy), end_y, (0, 255, 0), 2)
+            cv2.putText(cropped_copy, str(" B"), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    #print("block centers = ", block_centers)
+    #print("block orientations = ", block_orientations)
+    #cv2.drawContours(cropped_copy, block_contours, -1, (0,255,0), 3)
 
     # display the cropped image to the id tags
     #plt.imshow(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
@@ -232,7 +277,7 @@ def get_shapes_info(img_path, expected_k):
     img_data = np.float32(img_data)
 
     # Define the number of clusters
-    k = expected_k 
+    k = 17# expected_k 
     # Used to be 8
 
     # Define the criteria for the k-means algorithm
@@ -242,7 +287,6 @@ def get_shapes_info(img_path, expected_k):
     # Run the k-means algorithm
     # Parameters: data, number of clusters, best labels, criteria, number of attempts, initial centers
     _, labels, centers = cv2.kmeans(img_data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-
     #print(f'Labels shape: {labels.shape}')
     #print(f'Centers shape: {centers.shape}')
     #print(f'Centers: \n{centers}')
@@ -261,6 +305,24 @@ def get_shapes_info(img_path, expected_k):
 
     # shape dictionary we will use to store all the info about shapes
     shape_dict = []
+
+    # add the blocks to the shape dict
+    for i in range(len(block_centers)):
+        object_info = {
+                    "color": None,
+                    "shape": None,
+                    "size": None,  
+                    "position": None,
+                    "orientation": None 
+                }
+        object_info['shape'] = "block"
+        object_info['orientation'] = block_orientations[i]
+        object_info['position'] = [block_centers[i][0]*mm_per_pixel,block_centers[i][1]*mm_per_pixel]
+        object_info['color'] = "9"
+        object_info['size'] = 3000
+        shape_dict.append(object_info)
+
+        
     """
     Color
     Shape (i.e., circle or square)
@@ -310,8 +372,10 @@ def get_shapes_info(img_path, expected_k):
                     is_a_good_shape = False 
 
 
-                    if roundness > 0.85: # testing for circle
-                        object_info['shape'] = "circle"
+                    if roundness > 0.8: # testing for circle
+                        object_info['shape'] = "disk"
+                        cv2.circle(cropped_copy, (cx, cy), 5, (0, 0, 255), -1)
+                        cv2.putText(cropped_copy, str(" C"), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
                         num_circles = num_circles + 1
                         is_a_good_shape = True
                     elif np.abs(area - (perimeter/4)**2) < 900: # testing for square --> making sure (0.25*perim)^2 is close to the area of the object
@@ -322,60 +386,63 @@ def get_shapes_info(img_path, expected_k):
                         object_info['orientation'] = cv2.minAreaRect(cnt)[2]
                         #print(object_info['orientation'])
 
-                    if np.abs(area - (perimeter/4)**2) < 1500:
-                        print("squareness: :", np.abs(area - (perimeter/4)**2))
-                        print("seen as a: ",  object_info['shape'])
+                    #if np.abs(area - (perimeter/4)**2) < 1500:
+                        #print("squareness: :", np.abs(area - (perimeter/4)**2))
+                        #print("seen as a: ",  object_info['shape'])
 
-                    
                     
                     #some attributes that we're adding about this particular shape
                     object_info['color'] = str(i) # adds the kmeans id as the 'color'
                     object_info['position'] = [cx*mm_per_pixel,cy*mm_per_pixel]
                     object_info['size'] = area
 
-                    
-
                     # ----------------------------------
 
                     #add this shape to the full array that tells us about all our shapes, but only if it's "good"
                     if is_a_good_shape:
-                        shape_dict.append(object_info)
-                        # center of cluster
-                        cv2.circle(output_image, (cx, cy), 5, (0, 0, 255), -1)
-                        # put id on cluster
-                        cv2.putText(output_image, str(i), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                        
+                        already_a_shape_drawn_there = False
+                        for shape in shape_dict: #make sure there isn't already a
+                            x_dist = shape['position'][0] - object_info['position'][0]
+                            y_dist = shape['position'][1] - object_info['position'][1]
+                            total_dist = np.sqrt(x_dist**2 + y_dist**2)
+                            if total_dist < 3: # if there's already a shape there within 3mm
+                                already_a_shape_drawn_there = True
+                                #print("Already a shape there with a distance of", total_dist)
+                        
+                        if not already_a_shape_drawn_there: 
+                            shape_dict.append(object_info)
+
+                            # center of cluster
+                            cv2.circle(output_image, (cx, cy), 5, (0, 0, 255), -1)
+                            # put id on cluster
+                            cv2.putText(output_image, str(i), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                            if object_info['shape'] != 'square':
+                                cv2.putText(output_image, "  circ", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+                            if object_info['shape'] != 'square' and object_info['shape'] != 'circle':
+                                cv2.putText(output_image, "  NA", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
 
-                        # For squares, draw orientation axes
-                        if object_info['shape'] == 'square':
-                            center = (cx, cy)       # Center of the blue square (in pixels)
-                            angle_rad = np.deg2rad(int(object_info['orientation']))    # Orientation angle of the square (in radians)
-                            length = 50         # The length of the frame axes
+                            # For squares, draw orientation axes
+                            if object_info['shape'] == 'square':
+                                center = (cx, cy)       # Center of the blue square (in pixels)
+                                angle_rad = np.deg2rad(int(object_info['orientation']))    # Orientation angle of the square (in radians)
+                                length = 50         # The length of the frame axes
 
-                            # Calculate the end points of each axis
-                            # X-axis (you could change color later if needed)
-                            end_x = (int(center[0] + length * np.cos(angle_rad)), int(center[1] + length * np.sin(angle_rad)))
-                            # Y-axis (rotate the angle by 90 degrees or pi/2 radians for the perpendicular)
-                            end_y = (int(center[0] + length * np.cos(angle_rad + np.pi/2)), int(center[1] + length * np.sin(angle_rad + np.pi/2)))
+                                # Calculate the end points of each axis
+                                # X-axis (you could change color later if needed)
+                                end_x = (int(center[0] + length * np.cos(angle_rad)), int(center[1] + length * np.sin(angle_rad)))
+                                # Y-axis (rotate the angle by 90 degrees or pi/2 radians for the perpendicular)
+                                end_y = (int(center[0] + length * np.cos(angle_rad + np.pi/2)), int(center[1] + length * np.sin(angle_rad + np.pi/2)))
 
-                            # Draw the axes
-                            cv2.line(output_image, center, end_x, (0, 0, 255), 2)
-                            cv2.line(output_image, center, end_y, (0, 255, 0), 2)
+                                # Draw the axes
+                                cv2.line(output_image, center, end_x, (0, 0, 255), 2)
+                                cv2.line(output_image, center, end_y, (0, 255, 0), 2)
 
-                        # uncomment this section for us to debug each shape that we're detecting, i.e. go one by one
-                        #cv2.imshow('Clusters with Centers (Excluding Small Clusters)', output_image)
-                        #cv2.waitKey(0)
-                        #cv2.destroyAllWindows()
-
-                    
-
-    # uncomment this section for us to debug each shape that we're detecting, i.e. go one by one
-    #print("number of circles detected:, ", num_circles)
-    cv2.imshow('Clusters with Centers (Excluding Small Clusters)', output_image)
+    cv2.imshow('Circles and blocks', cropped_copy)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    #print("shape dict")
-    #print(shape_dict)
     return shape_dict
 
 if __name__ == '__main__':
@@ -383,21 +450,6 @@ if __name__ == '__main__':
     ACRYLIC_HEIGHT = 2.3 #mm
     TRAVEL_BUFFER = 50 #mm
     PLACEMENT_BUFFER = 2 #mm
-
-    # Load the design
-    f = open('tower.json')
-    data = json.load(f)
-    f.close()
-
-    objects = []
-
-    for object in data:
-        objects.append(data[object])
-
-    objects = sorted(objects, key = lambda z: z["position"][2])
-
-    expected_k = len(objects)
-
 
     # Make sure markers are in correct order for aruco vs plane formation
         # commented out this part just to test the image processing. 
@@ -419,6 +471,19 @@ if __name__ == '__main__':
     abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
     print('Connected.')
 
+    # Load the design
+    f = open('tower.json')
+    data = json.load(f)
+    f.close()
+
+    objects = []
+
+    for object in data:
+        objects.append(data[object])
+
+    objects = sorted(objects, key = lambda z: z["position"][2])
+
+    expected_k = len(objects)
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
     cap = cv2.VideoCapture(0)
@@ -427,17 +492,17 @@ if __name__ == '__main__':
     time.sleep(2)
     ret, frame = cap.read()
 
-    cv2.imshow('raw frame', frame)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    #cv2.imshow('raw frame', frame)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+    #cv2.imwrite('test_frame.jpg', frame)
 
     print("Photo taken: ", str(ret))
-    cv2.imwrite('test_frame.jpg', frame)
     cap.release()
 
     #get all shape info. An array of object infos
-    
     shapes = get_shapes_info('test_frame.jpg', expected_k)
+
 
     # remap the unique shape values to 0,1,2,...
     unique_colors = sorted(set(item['color'] for item in shapes))
@@ -450,37 +515,41 @@ if __name__ == '__main__':
 
     # for debugging
     print(shapes)
-    print("Just got all shape info")
+    print("Just got all shape info ^ sorted by area")
 
     current_height = 0
+    print("     ")
+    print("Now looking for objects that match our criteria:")
 
+    building_x = objects[0]['position'][0] # this will let us center the building area at the task frame origin
+    building_y = objects[0]['position'][1]
+    
     for object in objects:
-        # Find a shape in the field of view that matches the necessary object
-        # To do: add block detection to k-means
+        # this will let us center the building area at the task frame origin
+        object['position'][0] = object['position'][0] - building_x
+        object['position'][1] = object['position'][1] - building_y
+
+        print("Looking for an object with this criteria: ", object)
+        
         match = None
 
-        for shape in shapes:
-            if object['shape'] == 'block':
+        for i, shape in enumerate(shapes):
+
+            # right now we're just making sure the shape is the same as the shame we want
+            if object['shape'] == shape['shape']:
+                print("Got it. Here is its information: ", shape)
+                print()
                 match = shape
+                shapes[i]['shape'] = "used" # mark the shape used so we dont use the same thing again
                 break
-            elif object['shape'] == 'square' and object['color'] == shape['color']:
-                match = shape
-                break
-            else:
-                #Disk
-                # Estimate diameter from area
-                shape_diameter = np.sqrt(4 * shape['size'] / np.pi)
-                if object['color'] == shape['color'] and abs(object['size'] - shape_diameter) < 0.25:
-                    match = shape
-                    break
 
         if match is None:
             print("Oops, no good shapes were found.")
-        
-        if match is not None:
+            print()
+        else:
             # Go to the shape
             x = match['position'][0]
-            y = match['posiiton'][1]
+            y = match['position'][1]
 
             print("going above the shape")
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc)
@@ -491,6 +560,9 @@ if __name__ == '__main__':
                 goto_above_task_point(task_frame, x, y, BLOCK_HEIGHT, abb_rrc)
             else:
                 goto_above_task_point(task_frame, x, y, ACRYLIC_HEIGHT, abb_rrc)
+
+            # Changes the end effector to match the shape we're gonna pick up
+            change_end_effector_orientation(task_frame, match['orientation'], abb_rrc)
 
             #  activate the suction
             low = 0
@@ -506,13 +578,14 @@ if __name__ == '__main__':
 
             # Go to the object target position
             x = object['position'][0]
-            y = object['posiiton'][1]
+            y = object['position'][1]
             z = object['position'][2]
-
-            # 2mm
 
             # Move above target
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc) #10mm
+
+            #change orientation to final orientation
+            change_end_effector_orientation(task_frame, object['orientation'], abb_rrc)
 
             # Move to target
             goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER, abb_rrc) #10mm

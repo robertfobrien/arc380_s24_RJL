@@ -81,6 +81,51 @@ def pca(cluster):
 
     return mean, cluster_axes
 
+def get_all_blocks(pcd):
+    outlier_pcd, labels, coordinate_frame =  get_clusters(pcd)
+    blocks = []
+    means = []
+    cluster_axes_arr = []
+    mean_spheres = []
+
+    for i in range(len(labels)):
+        #print("i:", i)
+        block = get_cluster_n(outlier_pcd, labels, i)
+        #print("block", block)
+
+        # make sure our block is large enough
+        if len(block.points) < 50:
+            continue
+        
+        blocks.append(block)
+        mean, cluster_axis = pca(block)
+        #print("mean ", mean)
+        #print("cluster_axis", cluster_axis)
+        means.append(mean)
+        cluster_axes_arr.append(cluster_axis)
+        mean_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.008)
+        mean_sphere.translate(mean)
+        mean_spheres.append(mean_sphere)
+
+    print("Found ", len(blocks), " Blocks!")
+    print("    ", blocks)
+
+    # used for visualization purposes    
+    all_geometries = [coordinate_frame, coordinate_frame]
+    for i in range(len(blocks)):
+        all_geometries.append(cluster_axes_arr[i])
+        all_geometries.append(blocks[i])
+        all_geometries.append(mean_spheres[i])
+    return blocks, means, cluster_axes_arr, mean_spheres, all_geometries
+
+def visualize_shapes(path="example_pcd.ply"):
+    print("Intaking point cloud: ")
+    pcd = o3d.io.read_point_cloud("example_pcd.ply")
+    blocks, means, block_axes_arr, mean_spheres, all_geometries = get_all_blocks(pcd)
+    o3d.visualization.draw_geometries(all_geometries)
+
+
+
 # Reduces shadows on white background and brightens the color of acrylic pieces 
 # for better k-means clustering. Can be fine-tuned for better performance.
 def process_for_kmeans(img_file):
