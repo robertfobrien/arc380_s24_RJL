@@ -115,16 +115,55 @@ def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) ->
     return ee_frame_w
 
 def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
-    orientation = orientation + 75
+    if orientation == None:
+        return
     joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
-    joints.rax_6 = orientation # only change the end effector value
+    print("joints:", joints)
+    joints.rax_6 = joints.rax_6 + orientation # only change the end effector value
     done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
 
 def goto_task_point(task_frame, x, y, abb_rrc):
     """ goe to a point in the task frame"""
     f1 = cg.Frame([x,y,0], [1,0,0], [0,1,0]) #[1,0,0] and [0,1,0] define the x and y planes
     f1_p = transform_task_to_world_frame(f1, task_frame)
-    next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))   
+    next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
+
+def move_linear_z(z, abb_rrc):
+    frame = abb_rrc.send_and_wait(rrc.GetFrame())
+    frame.point.z += z
+    abb_rrc.send_and_wait(rrc.MoveToFrame(frame, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
+    frame.point.z -= z
+
+def goto_task_point_with_orientation(task_frame, x, y, z, yaw, abb_rrc):
+    """
+    Move robot to a point in the task frame with a specific orientation around the z-axis (yaw).
+    
+    Parameters:
+    - task_frame: The reference frame for the task
+    - x, y, z: Position coordinates in the task frame
+    - yaw: Orientation around the z-axis in radians
+    - abb_rrc: Robot remote control interface object
+    """
+    
+    # Convert yaw angle to a rotation matrix (only rotation around z-axis)
+    rotation_matrix = yaw_to_matrix(yaw)
+    
+    # Create a frame with position and orientation
+    f1 = cg.Frame([x, y, z], rotation_matrix[0], rotation_matrix[1])
+    
+    # Transform the task frame to the world frame
+    f1_world = transform_task_to_world_frame(f1, task_frame)
+    
+    # Move the robot to the new frame with the given speed, zone, and motion type
+    next_move = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_world, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
+
+    return next_move
+
+# Mock function to convert yaw angle to a rotation matrix.
+def yaw_to_matrix(yaw):
+    cos_yaw = np.cos(yaw)
+    sin_yaw = np.sin(yaw)
+    return [[cos_yaw, -sin_yaw, 0], [sin_yaw, cos_yaw, 0], [0, 0, 1]]   
 
 def goto_above_task_point(task_frame, x, y, z, abb_rrc):
     """Go to an x,y,z point in the tf"""""""""
@@ -247,8 +286,8 @@ def get_shapes_info(img_path, expected_k):
 
             #fixing orientation problems 
             orientation = rect[2]
-            if orientation < 45:
-                orientation = orientation + 90
+            if orientation > 45:
+                orientation = orientation - 90
             
             block_orientations.append(orientation)
             angle_rad = np.deg2rad(int(orientation))    # Orientation angle of the rectangle (in radians)
@@ -448,7 +487,7 @@ def get_shapes_info(img_path, expected_k):
     return shape_dict
 
 if __name__ == '__main__':
-    BLOCK_HEIGHT = 14.3 #mm
+    BLOCK_HEIGHT = 15 #mm
     ACRYLIC_HEIGHT = 2.3 #mm
     TRAVEL_BUFFER = 50 #mm
     PLACEMENT_BUFFER = 2 #mm
@@ -476,10 +515,10 @@ if __name__ == '__main__':
     abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
     print('Connected.')
 
-    goto_above_task_point
-    goto_above_task_point(x = 250, y=250, z=10, task_frame=task_frame, abb_rrc=abb_rrc)
-    change_end_effector_orientation(task_frame=task_frame, orientation=75, abb_rrc=abb_rrc)
-    goto_above_task_point(x = 250, y=250, z=20, task_frame=task_frame, abb_rrc=abb_rrc)
+
+    #goto_above_task_point(x = 250, y=250, z=10, task_frame=task_frame, abb_rrc=abb_rrc)
+    #change_end_effector_orientation(task_frame=task_frame, orientation=75, abb_rrc=abb_rrc)
+    #goto_above_task_point(x = 250, y=250, z=20, task_frame=task_frame, abb_rrc=abb_rrc)
     
 
     # Load the design
@@ -497,7 +536,7 @@ if __name__ == '__main__':
     expected_k = len(objects)
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
-    cap = cv2.VideoCapture(0)
+    """cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_EXPOSURE, -4)
     ret, frame = cap.read()
     time.sleep(2)
@@ -509,7 +548,7 @@ if __name__ == '__main__':
     cv2.imwrite('test_frame.jpg', frame)
 
     print("Photo taken: ", str(ret))
-    cap.release()
+    cap.release()"""
 
 
     #get all shape info. An array of object infos
@@ -565,7 +604,6 @@ if __name__ == '__main__':
 
             print("going above the shape")
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc)
-            change_end_effector_orientation(task_frame=task_frame, orientation=match['orientation'], abb_rrc=abb_rrc)
 
             # go down to the actual shape
             print("going down to the shape")
@@ -577,7 +615,8 @@ if __name__ == '__main__':
                 goto_above_task_point(task_frame=task_frame, x=x, y=y, z=ACRYLIC_HEIGHT, abb_rrc=abb_rrc)
 
             # Changes the end effector to match the shape we're gonna pick up
-            change_end_effector_orientation(task_frame, match['orientation'], abb_rrc)
+            change_end_effector_orientation(task_frame=task_frame, orientation=shape['orientation'], abb_rrc=abb_rrc)
+            move_linear_z(-1, abb_rrc) # -1mm
 
             #  activate the suction
             low = 0
@@ -599,11 +638,13 @@ if __name__ == '__main__':
             # Move above target
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc) #10mm
 
+            
+            # move to 5mm above where we want to place the block
+            goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER + 5, abb_rrc) #10mm
             #change orientation to final orientation
-            #change_end_effector_orientation(task_frame=task_frame, orientation=object['orientation'], abb_rrc=abb_rrc)
-
-            # Move to target
-            goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER, abb_rrc) #10mm
+            change_end_effector_orientation(task_frame=task_frame, orientation=object['orientation'], abb_rrc=abb_rrc)
+            #move down 5mm 
+            move_linear_z(-5, abb_rrc)
 
             # turn off suction
             done = abb_rrc.send_and_wait(rrc.SetDigital('DO00',low))
