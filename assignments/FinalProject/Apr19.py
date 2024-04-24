@@ -115,6 +115,7 @@ def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) ->
     return ee_frame_w
 
 def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
+    """get all the joint states and only adjust end effector angle, send as a command"""
     if orientation == None:
         return
     joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
@@ -129,35 +130,11 @@ def goto_task_point(task_frame, x, y, abb_rrc):
     next = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_p, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
 
 def move_linear_z(z, abb_rrc):
+    """ Move linearly by a relative amount in the z direction according to the robot"""
     frame = abb_rrc.send_and_wait(rrc.GetFrame())
     frame.point.z += z
     abb_rrc.send_and_wait(rrc.MoveToFrame(frame, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
     frame.point.z -= z
-
-def goto_task_point_with_orientation(task_frame, x, y, z, yaw, abb_rrc):
-    """
-    Move robot to a point in the task frame with a specific orientation around the z-axis (yaw).
-    
-    Parameters:
-    - task_frame: The reference frame for the task
-    - x, y, z: Position coordinates in the task frame
-    - yaw: Orientation around the z-axis in radians
-    - abb_rrc: Robot remote control interface object
-    """
-    
-    # Convert yaw angle to a rotation matrix (only rotation around z-axis)
-    rotation_matrix = yaw_to_matrix(yaw)
-    
-    # Create a frame with position and orientation
-    f1 = cg.Frame([x, y, z], rotation_matrix[0], rotation_matrix[1])
-    
-    # Transform the task frame to the world frame
-    f1_world = transform_task_to_world_frame(f1, task_frame)
-    
-    # Move the robot to the new frame with the given speed, zone, and motion type
-    next_move = abb_rrc.send_and_wait(rrc.MoveToFrame(f1_world, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
-
-    return next_move
 
 # Mock function to convert yaw angle to a rotation matrix.
 def yaw_to_matrix(yaw):
@@ -488,7 +465,7 @@ def get_shapes_info(img_path, expected_k):
 
 if __name__ == '__main__':
     BLOCK_HEIGHT = 15 #mm
-    ACRYLIC_HEIGHT = 2.3 #mm
+    ACRYLIC_HEIGHT = 3 #mm
     TRAVEL_BUFFER = 50 #mm
     PLACEMENT_BUFFER = 2 #mm
 
@@ -536,7 +513,7 @@ if __name__ == '__main__':
     expected_k = len(objects)
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
-    """cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_EXPOSURE, -4)
     ret, frame = cap.read()
     time.sleep(2)
@@ -548,7 +525,7 @@ if __name__ == '__main__':
     cv2.imwrite('test_frame.jpg', frame)
 
     print("Photo taken: ", str(ret))
-    cap.release()"""
+    cap.release()
 
 
     #get all shape info. An array of object infos
@@ -616,6 +593,7 @@ if __name__ == '__main__':
 
             # Changes the end effector to match the shape we're gonna pick up
             change_end_effector_orientation(task_frame=task_frame, orientation=shape['orientation'], abb_rrc=abb_rrc)
+            # move down 1mm to the block or shape
             move_linear_z(-1, abb_rrc) # -1mm
 
             #  activate the suction
