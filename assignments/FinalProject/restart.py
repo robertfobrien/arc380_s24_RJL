@@ -11,7 +11,7 @@ import compas_rrc as rrc
 from cv2 import aruco
 
 
-speed=90
+speed=150
 
 
 
@@ -93,49 +93,6 @@ def create_frame_from_points(point1: cg.Point, point2: cg.Point, point3: cg.Poin
     # ====================================================================================
     return frame
 
-def transform_image(source, src_pts):
-    img = source.copy()
-    # Create point matrix
-    point_matrix = np.float32(src_pts)
-    print("b4", point_matrix)
-
-    # Pixel values in original image
-    red_point = point_matrix[3]
-    green_point = point_matrix[0]
-    black_point = point_matrix[2]
-    blue_point = point_matrix[1]
-
-    # Draw circle for each point
-    #cv2.circle(img,(int(red_point[0]),int(red_point[1])),10,(0,0,255),cv2.FILLED)
-    #cv2.circle(img,(int(green_point[0]),int(green_point[1])),10,(0,255,0),cv2.FILLED)
-    #cv2.circle(img,(int(blue_point[0]),int(blue_point[1])),10,(255,0,0),cv2.FILLED)
-    #cv2.circle(img,(int(black_point[0]),int(black_point[1])),10,(0,0,0),cv2.FILLED)
-
-    
-    # Create point matrix
-    point_matrix = np.float32([red_point,green_point,black_point, blue_point])
-    print("pa", point_matrix)
-
-    multiplier = 5
-
-    height, width = 300*multiplier, 480*multiplier
-    
-    # Desired points value in output images
-    converted_red_pixel_value = [0,0]
-    converted_green_pixel_value = [width,0]
-    converted_black_pixel_value = [0,height]
-    converted_blue_pixel_value = [width,height]
-    
-    # Convert points
-    converted_points = np.float32([converted_red_pixel_value,converted_green_pixel_value,
-                                converted_black_pixel_value,converted_blue_pixel_value])
-    
-    # perspective transform
-    perspective_transform = cv2.getPerspectiveTransform(point_matrix,converted_points)
-    img_Output = cv2.warpPerspective(source,perspective_transform,(width,height))
- 
-    return img_Output
-
 
 def transform_task_to_world_frame(ee_frame_t: cg.Frame, task_frame: cg.Frame) -> cg.Frame:
     """Transform a task frame to the world frame.
@@ -162,10 +119,8 @@ def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
     if orientation == None:
         return
     joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
-    
     print("joints:", joints)
-    joints.rax_6 = joints.rax_1  + orientation + 180 # only change the end effector value
-
+    joints.rax_6 = joints.rax_6 + orientation # only change the end effector value
     done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
 
 def goto_task_point(task_frame, x, y, abb_rrc):
@@ -277,11 +232,12 @@ def get_shapes_info(img_path, expected_k):
     # Compute the axis-aligned bounding box of the points
     x, y, w, h = cv2.boundingRect(src_pts)
 
+    mm_per_pixel = get_mm_per_pixel(w,h)
+
+
     # Crop the image using the computed bounding box
-    cropped_image = transform_image(img.copy(),src_pts)
+    cropped_image = img.copy()[y:y+h, x:x+w]
     cropped_copy = cropped_image.copy()
-    print("cropped and transformed image shape: ", cropped_image.shape)
-    mm_per_pixel = 0.2
 
 
     gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
@@ -293,8 +249,7 @@ def get_shapes_info(img_path, expected_k):
     block_orientations = []
     for contour in contours: 
         shape_area = cv2.contourArea(contour)
-        #print(shape_area)
-        if shape_area > 29000 and shape_area < 35000:
+        if shape_area > 3000 and shape_area < 4000:
             #print("Blocks found with area: ", shape_area)
             block_contours.append(contour)
             # center
@@ -335,11 +290,8 @@ def get_shapes_info(img_path, expected_k):
     #plt.show()
 
     # Run k-means clustering on the image
-    process()
 
     # Reshape our image data to a flattened list of RGB values
-    #img2 = cv2.imread('test_frame_kmeans.jpg')
-    #cropped_image = transform_image(img2.copy(), src_pts)
     img_data = cropped_image.reshape((-1, 3))
     img_data = np.float32(img_data)
 
@@ -512,52 +464,24 @@ def get_shapes_info(img_path, expected_k):
     cv2.destroyAllWindows()
     return shape_dict
 
+def goto_robot_home():
+    """Go to home position (linear joint move)"""
+    home = rrc.RobotJoints([0, 0, 0, 0, 90, 0])
+    done = abb_rrc.send_and_wait(rrc.MoveToJoints(home, [], speed, rrc.Zone.FINE))
 
-def process():
-    imghsv = cv2.imread("test_frame.jpg")
+def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
+    """get all the joint states and only adjust end effector angle, send as a command"""
+    if orientation == None:
+        return
+    joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
 
-    imghsv = cv2.cvtColor(imghsv, cv2.COLOR_BGR2HSV)
+    current_o = joints.rax_1 - joints.rax_6
 
-    h = imghsv[:,:,0] # Hue
-    s = imghsv[:,:,1] # Saturation
-    v = imghsv[:,:,2] # Value
-
-    for i in range(len(v)):
-        for j in range(len(v[i])):
-
-            # Lighten the pixel
-            v[i][j] = min(v[i][j] + 100, 255)
-
-    processed = cv2.merge([h, s, v])
-    processed = cv2.cvtColor(processed, cv2.COLOR_HSV2BGR)
-    cv2.imshow("Processed", processed)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    cv2.imwrite('test_frame_kmeans.jpg', processed)
+    print("joints:", joints)
+    joints.rax_6 = current_o + orientation # only change the end effector value
+    done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
 
 if __name__ == '__main__':
-    BLOCK_HEIGHT = 15 #mm
-    ACRYLIC_HEIGHT = 3 #mm
-    TRAVEL_BUFFER = 60 #mm
-    PLACEMENT_BUFFER = 2 #mm
-
-    # Make sure markers are in correct order for aruco vs plane formation
-        # commented out this part just to test the image processing. 
-    aruco_1 = cg.Point(244.67, 485.16, 23.51) # Origin, bottom left
-    aruco_2 = cg.Point(235.93, 132.19, 19.29) # x-axis, top left
-    aruco_3 = cg.Point(-236.45, 494.64, 23.49) # xy-plane, bottom right
-    aruco_4 = cg.Point(-236.01, 192.54, 20.05) # Top right
-
-    pt_1 =  cg.Point(-236.41, 494.42, 24.13)
-    pt_2 =  cg.Point(250.35, 491.66, 23.13)
-    pt_3 = cg.Point(-235.71, 190.92, 23.26)
-    task_frame = create_frame_from_points(pt_1, pt_2, pt_3)
-
-    print("TASK FRAME")
-    print(task_frame)
-
-    # Create Ros Client
     ros = rrc.RosClient()
     ros.run()
 
@@ -565,168 +489,9 @@ if __name__ == '__main__':
     abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
     print('Connected.')
 
-    goto_robot_home(abb_rrc)
+    joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
+    print("joints:", joints)
 
-
-    #goto_above_task_point(x = 250, y=250, z=10, task_frame=task_frame, abb_rrc=abb_rrc)
-    #change_end_effector_orientation(task_frame=task_frame, orientation=75, abb_rrc=abb_rrc)
-    #goto_above_task_point(x = 250, y=250, z=20, task_frame=task_frame, abb_rrc=abb_rrc)
-    
-
-    # Load the design
-    f = open('tower.json')
-    data = json.load(f)
-    f.close()
-
-    objects = []
-
-    for object in data:
-        objects.append(data[object])
-
-    objects = sorted(objects, key = lambda z: z["position"][2])
-
-    expected_k = len(objects)
-
-    # takes the image and saves it to "test_frame.jpg" using opencv 
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_EXPOSURE, -4)
-    ret, frame = cap.read()
-    time.sleep(2)
-    ret, frame = cap.read()
-
-    cv2.imshow('raw frame', frame)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    cv2.imwrite('test_frame.jpg', frame)
-    
-
-    print("Photo taken: ", str(ret))
-    cap.release()
-    
-    # Edit the photo to increase value
-    #process()
-
-    #get all shape info. An array of object infos
-    shapes = get_shapes_info('test_frame.jpg', expected_k)
-
-
-    # remap the unique shape values to 0,1,2,...
-    unique_colors = sorted(set(item['color'] for item in shapes))
-    color_to_group = {shape: str(i) for i, shape in enumerate(unique_colors)}
-    for shape in shapes:
-        shape['color'] = color_to_group[shape['color']]
-
-    # sorts the shape by negative size
-    shapes = sorted(shapes, key=lambda x: -x['size'])
-
-    # for debugging
-    print(shapes)
-    print("Just got all shape info ^ sorted by area")
-
-    current_height = 0
-    print("     ")
-    print("Now looking for objects that match our criteria:")
-
-    building_x = objects[0]['position'][0] # this will let us center the building area at the task frame origin
-    building_y = objects[0]['position'][1]
-    
-    for object in objects:
-        # this will let us center the building area at the task frame origin
-        object['position'][0] = object['position'][0] - building_x + 500
-        object['position'][1] = object['position'][1] - building_y + 150
-
-        print("Looking for an object with this criteria: ", object)
-        
-        match = None
-
-        for i, shape in enumerate(shapes):
-
-            # right now we're just making sure the shape is the same as the shame we want
-            if object['shape'] == shape['shape']:
-                print("Got it. Here is its information: ", shape)
-                print()
-                match = shape
-                shapes[i]['shape'] = "used" # mark the shape used so we dont use the same thing again
-                break
-
-        if match is None:
-            print("Oops, no good shapes were found.")
-            print()
-        else:
-            # Go to the shape
-            x = match['position'][0]
-            y = match['position'][1]
-
-            print("going above the shape")
-            goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc)
-            joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
-            print("joints:", joints)
-            
-
-            # go down to the actual shape
-            print("going down to the shape")
-            if object['shape'] == 'block':
-                print("Moving to shape, Block")
-                goto_above_task_point(x=x, y=y, z=(BLOCK_HEIGHT+5), task_frame=task_frame, abb_rrc=abb_rrc)
-            else:
-                print("Moving to shape, Not block")
-                goto_above_task_point(task_frame=task_frame, x=x, y=y, z=(ACRYLIC_HEIGHT+5), abb_rrc=abb_rrc)
-
-            # Changes the end effector to match the shape we're gonna pick up
-            change_end_effector_orientation(task_frame=task_frame, orientation=shape['orientation'], abb_rrc=abb_rrc)
-            #object_task_frame = cg.Frame.from_axis_angle_vector([0, 0, rotation_angle], point=[x, y, 50])
-            #object_world_frame = transform_task_to_world_frame(object_task_frame, task_frame)
-            #next = abb_rrc.send_and_wait(rrc.MoveToFrame(object_world_frame, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
-            
-            # move down 1mm to the block or shape
-            move_linear_z(-6, abb_rrc) # -1mm
-
-            #  activate the suction
-            low = 0
-            high = 1
-            done = abb_rrc.send_and_wait(rrc.SetDigital('DO00',high))
-
-            # add wait time for suction to engage
-            t = 1.0 # Unit [s]
-            done = abb_rrc.send_and_wait(rrc.WaitTime(t))
-
-             #lift it above 
-            goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc) #10mm
-
-            # Go to the object target position
-            x = object['position'][0]
-            y = object['position'][1]
-            z = object['position'][2]
-
-            # Move above target
-            goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc) #10mm
-
-            
-            # move to 5mm above where we want to place the block
-            goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER + 10, abb_rrc) #10mm
-            #change orientation to final orientation
-            change_end_effector_orientation(task_frame=task_frame, orientation=(object['rotation']*57.2958)%360, abb_rrc=abb_rrc)
-            #move down 5mm 
-            move_linear_z(-10, abb_rrc)
-
-            # turn off suction
-            done = abb_rrc.send_and_wait(rrc.SetDigital('DO00',low))
-
-            # wait time for suction to de engage
-            t = 1.0 # Unit [s]
-            done = abb_rrc.send_and_wait(rrc.WaitTime(t))
-
-            #raise above the pile so it doesnt knock it over 
-            goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc)
-        
-    # End of Code
-    print('Finished')
-
-    # Close client
-    ros.close()
-    ros.terminate()
-        
-        
-
-
-
+    goto_robot_home()
+    joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
+    print("joints:", joints)
