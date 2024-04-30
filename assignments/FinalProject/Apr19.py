@@ -338,8 +338,8 @@ def get_shapes_info(img_path, expected_k):
     process()
 
     # Reshape our image data to a flattened list of RGB values
-    #img2 = cv2.imread('test_frame_kmeans.jpg')
-    #cropped_image = transform_image(img2.copy(), src_pts)
+    img2 = cv2.imread('test_frame_kmeans.jpg') # New
+    cropped_image = transform_image(img2.copy(), src_pts) # New
     img_data = cropped_image.reshape((-1, 3))
     img_data = np.float32(img_data)
 
