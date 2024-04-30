@@ -11,7 +11,7 @@ import compas_rrc as rrc
 from cv2 import aruco
 
 
-speed=90
+speed=100
 
 
 
@@ -165,6 +165,14 @@ def change_end_effector_orientation(task_frame, orientation ,abb_rrc):
     
     print("joints:", joints)
     joints.rax_6 = joints.rax_1  + orientation + 180 # only change the end effector value
+    while joints.rax_6 > 340:
+        joints.rax_6 = joints.rax_6 - 180
+
+    while joints.rax_6 < -250:
+        joints.rax_6 = joints.rax_6 + 180
+
+    print("setting end effector angle to: ", joints.rax_6)
+    
 
     done = abb_rrc.send_and_wait(rrc.MoveToJoints(joints, [], speed, rrc.Zone.FINE)) # move the end effector
 
@@ -324,9 +332,10 @@ def get_shapes_info(img_path, expected_k):
             cv2.line(cropped_copy, (cx,cy), end_y, (0, 255, 0), 2)
             cv2.putText(cropped_copy, str(" B"), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
     cv2.drawContours(block_thresh, block_contours, -1, (0,255,0), 3)
-    cv2.imshow('Circles and blocks', block_thresh)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    
+    #cv2.imshow('Circles and blocks', block_thresh)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
     #print("block centers = ", block_centers)
     #print("block orientations = ", block_orientations)
     # display the cropped image to the id tags
@@ -335,12 +344,10 @@ def get_shapes_info(img_path, expected_k):
     #plt.show()
 
     # Run k-means clustering on the image
-    process()
+    cropped_process = cropped_image.copy() # process(cropped_image.copy())
 
     # Reshape our image data to a flattened list of RGB values
-    img2 = cv2.imread('test_frame_kmeans.jpg') # New
-    cropped_image = transform_image(img2.copy(), src_pts) # New
-    img_data = cropped_image.reshape((-1, 3))
+    img_data = cropped_process.reshape((-1, 3))
     img_data = np.float32(img_data)
 
     # Define the number of clusters
@@ -364,6 +371,7 @@ def get_shapes_info(img_path, expected_k):
 
     # Rebuild the image using the labels and centers
     kmeans_data = centers[labels.flatten()]
+    #kmeans_img = kmeans_data.reshape(cropped_image2.shape)
     kmeans_img = kmeans_data.reshape(cropped_image.shape)
     labels = labels.reshape(cropped_image.shape[:2])
 
@@ -513,8 +521,7 @@ def get_shapes_info(img_path, expected_k):
     return shape_dict
 
 
-def process():
-    imghsv = cv2.imread("test_frame.jpg")
+def process(imghsv):
 
     imghsv = cv2.cvtColor(imghsv, cv2.COLOR_BGR2HSV)
 
@@ -531,27 +538,32 @@ def process():
     processed = cv2.merge([h, s, v])
     processed = cv2.cvtColor(processed, cv2.COLOR_HSV2BGR)
     cv2.imshow("Processed", processed)
-
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    cv2.imwrite('test_frame_kmeans.jpg', processed)
+    #cv2.imwrite('test_frame_kmeans.jpg', processed)
+    return processed
 
 if __name__ == '__main__':
     BLOCK_HEIGHT = 15 #mm
     ACRYLIC_HEIGHT = 3 #mm
-    TRAVEL_BUFFER = 60 #mm
-    PLACEMENT_BUFFER = 2 #mm
+    TRAVEL_BUFFER = 90 #mm
+    PLACEMENT_BUFFER =  3#mm
 
     # Make sure markers are in correct order for aruco vs plane formation
-        # commented out this part just to test the image processing. 
+    # commented out this part just to test the image processing. 
     aruco_1 = cg.Point(244.67, 485.16, 23.51) # Origin, bottom left
     aruco_2 = cg.Point(235.93, 132.19, 19.29) # x-axis, top left
     aruco_3 = cg.Point(-236.45, 494.64, 23.49) # xy-plane, bottom right
     aruco_4 = cg.Point(-236.01, 192.54, 20.05) # Top right
+    """    
+    pt_1 =  cg.Point(-235.41, 494.42, 24.13)
+    pt_2 =  cg.Point(251.35, 491.66, 23.13)
+    pt_3 = cg.Point(-234.71, 190.92, 23.26)
+    """
 
-    pt_1 =  cg.Point(-236.41, 494.42, 24.13)
-    pt_2 =  cg.Point(250.35, 491.66, 23.13)
-    pt_3 = cg.Point(-235.71, 190.92, 23.26)
+    pt_1 =  cg.Point(-234.41, 492.42, 23.09)
+    pt_2 =  cg.Point(251.35, 491.66, 23.13)
+    pt_3 = cg.Point(-234.71, 190.92, 23.26)
     task_frame = create_frame_from_points(pt_1, pt_2, pt_3)
 
     print("TASK FRAME")
@@ -564,6 +576,9 @@ if __name__ == '__main__':
     # Create ABB Client
     abb_rrc = rrc.AbbClient(ros, '/rob1-rw6')
     print('Connected.')
+
+    joints, external_axes = abb_rrc.send_and_wait(rrc.GetJoints())
+    print("Starting joints:", joints)
 
     goto_robot_home(abb_rrc)
 
@@ -584,7 +599,7 @@ if __name__ == '__main__':
         objects.append(data[object])
 
     objects = sorted(objects, key = lambda z: z["position"][2])
-
+    print(objects)
     expected_k = len(objects)
 
     # takes the image and saves it to "test_frame.jpg" using opencv 
@@ -667,10 +682,10 @@ if __name__ == '__main__':
             print("going down to the shape")
             if object['shape'] == 'block':
                 print("Moving to shape, Block")
-                goto_above_task_point(x=x, y=y, z=(BLOCK_HEIGHT+5), task_frame=task_frame, abb_rrc=abb_rrc)
+                goto_above_task_point(x=x, y=y, z=(BLOCK_HEIGHT+8), task_frame=task_frame, abb_rrc=abb_rrc)
             else:
                 print("Moving to shape, Not block")
-                goto_above_task_point(task_frame=task_frame, x=x, y=y, z=(ACRYLIC_HEIGHT+5), abb_rrc=abb_rrc)
+                goto_above_task_point(task_frame=task_frame, x=x, y=y, z=(ACRYLIC_HEIGHT+8), abb_rrc=abb_rrc)
 
             # Changes the end effector to match the shape we're gonna pick up
             change_end_effector_orientation(task_frame=task_frame, orientation=shape['orientation'], abb_rrc=abb_rrc)
@@ -678,8 +693,8 @@ if __name__ == '__main__':
             #object_world_frame = transform_task_to_world_frame(object_task_frame, task_frame)
             #next = abb_rrc.send_and_wait(rrc.MoveToFrame(object_world_frame, speed, rrc.Zone.FINE, rrc.Motion.LINEAR))
             
-            # move down 1mm to the block or shape
-            move_linear_z(-6, abb_rrc) # -1mm
+            # move down to the block or shape
+            move_linear_z(-9, abb_rrc) # -1mm
 
             #  activate the suction
             low = 0
@@ -703,11 +718,11 @@ if __name__ == '__main__':
 
             
             # move to 5mm above where we want to place the block
-            goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER + 10, abb_rrc) #10mm
+            goto_above_task_point(task_frame, x, y, z + PLACEMENT_BUFFER + 20, abb_rrc) #10mm
             #change orientation to final orientation
-            change_end_effector_orientation(task_frame=task_frame, orientation=(object['rotation']*57.2958)%360, abb_rrc=abb_rrc)
+            change_end_effector_orientation(task_frame=task_frame, orientation=(object['rotation']*57.2958), abb_rrc=abb_rrc)
             #move down 5mm 
-            move_linear_z(-10, abb_rrc)
+            move_linear_z(-20, abb_rrc)
 
             # turn off suction
             done = abb_rrc.send_and_wait(rrc.SetDigital('DO00',low))
@@ -718,6 +733,8 @@ if __name__ == '__main__':
 
             #raise above the pile so it doesnt knock it over 
             goto_above_task_point(task_frame, x, y, current_height + TRAVEL_BUFFER, abb_rrc)
+
+            current_height = max(current_height, z)
         
     # End of Code
     print('Finished')
